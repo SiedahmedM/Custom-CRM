@@ -5,29 +5,21 @@ import { useAuth } from '@/contexts/AuthContext'
 import { useRouter } from 'next/navigation'
 import { ConnectionStatus } from '@/components/ConnectionStatus'
 import { 
-  BarChart3,
   Package,
-  Users,
   AlertTriangle,
-  TrendingUp,
   DollarSign,
   Clock,
   Navigation,
-  Bell,
   Settings,
   RefreshCw,
-  MapPin,
-  Phone,
   CheckCircle,
   XCircle,
   AlertCircle,
-  ChevronRight,
-  Eye,
-  Filter
+  ChevronRight
 } from 'lucide-react'
 import { useRealtimeOrders } from '@/hooks/useRealtimeOrders'
 import { format, isToday, isThisWeek, isThisMonth } from 'date-fns'
-import { motion, AnimatePresence } from 'framer-motion'
+import { motion } from 'framer-motion'
 import { toast } from 'react-hot-toast'
 import { createClient } from '@/lib/supabase/client'
 import { useQuery } from '@tanstack/react-query'
@@ -85,7 +77,6 @@ export default function AdminDashboard() {
   // Get real-time orders
   const { 
     orders, 
-    isLoading: ordersLoading, 
     updateOrderStatus,
     refetch: refetchOrders
   } = useRealtimeOrders()
@@ -223,7 +214,7 @@ export default function AdminDashboard() {
     toast.success('Dashboard refreshed')
   }
 
-  const handleReassignOrder = async (orderId: string, driverId: string) => {
+  const _handleReassignOrder = async (orderId: string, driverId: string) => {
     try {
       await updateOrderStatus.mutateAsync({
         id: orderId,

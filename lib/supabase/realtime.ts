@@ -8,7 +8,7 @@ interface RealtimeConfig {
   table: string
   event?: RealtimeEvent | '*'
   filter?: string
-  callback: (payload: RealtimePostgresChangesPayload<any>) => void
+  callback: (payload: RealtimePostgresChangesPayload<Record<string, unknown>>) => void
   onError?: (error: Error) => void
 }
 

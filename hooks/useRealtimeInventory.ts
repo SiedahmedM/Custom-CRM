@@ -157,7 +157,7 @@ export function useRealtimeInventory(filters?: {
     return () => {
       realtimeManager.unsubscribe(channel)
     }
-  }, [filters, queryClient, refetch])
+  }, [filters, queryClient, matchesFilters, refetch])
 
   // Helper to check if inventory matches current filters
   const matchesFilters = (item: InventoryWithAdjustments): boolean => {

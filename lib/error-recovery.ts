@@ -91,12 +91,10 @@ export class ErrorRecoveryManager {
       retryDelay = 1000,
       exponentialBackoff = true,
       showToast = true,
-      fallbackAction,
       criticalError = false
     } = options
 
     let attempt = 0
-    const errorKey = `${operationId}-${Date.now()}`
 
     while (attempt <= maxRetries) {
       try {
@@ -109,7 +107,7 @@ export class ErrorRecoveryManager {
         this.retryQueue.delete(operationId)
         
         return result
-      } catch (error: any) {
+      } catch (error: unknown) {
         attempt++
         const currentErrorCount = this.errorCounts.get(operationId) || 0
         this.errorCounts.set(operationId, currentErrorCount + 1)
@@ -214,7 +212,7 @@ export class ErrorRecoveryManager {
 
   private async handleMaxRetriesReached(
     operationId: string,
-    error: any,
+    error: unknown,
     options: ErrorRecoveryOptions
   ) {
     const errorCount = this.errorCounts.get(operationId) || 0
@@ -257,7 +255,7 @@ export class ErrorRecoveryManager {
     }
   }
 
-  public handleError(error: any, options: ErrorRecoveryOptions = {}) {
+  public handleError(error: unknown, options: ErrorRecoveryOptions = {}) {
     console.error('Error handled by ErrorRecoveryManager:', error)
 
     if (options.showToast) {
@@ -287,7 +285,7 @@ export class ErrorRecoveryManager {
     }
   }
 
-  private isNetworkError(error: any): boolean {
+  private isNetworkError(error: unknown): boolean {
     if (!error) return false
     
     const networkErrorMessages = [
@@ -307,7 +305,7 @@ export class ErrorRecoveryManager {
            !navigator.onLine
   }
 
-  private getErrorMessage(error: any): string {
+  private getErrorMessage(error: unknown): string {
     if (typeof error === 'string') return error
     if (error?.message) return error.message
     if (error?.error) return error.error
@@ -345,7 +343,7 @@ export class ErrorRecoveryManager {
 
 interface QueuedOperation {
   id: string
-  operation: () => Promise<any>
+  operation: () => Promise<unknown>
   options: ErrorRecoveryOptions
   timestamp: number
   attempts: number
@@ -355,12 +353,12 @@ interface QueuedOperation {
 export const errorRecoveryManager = ErrorRecoveryManager.getInstance()
 
 // Utility function for easy error handling in components
-export const withErrorRecovery = <T extends (...args: any[]) => Promise<any>>(
+export const withErrorRecovery = <T extends (...args: unknown[]) => Promise<unknown>>(
   fn: T,
   operationId: string,
   options: ErrorRecoveryOptions = {}
 ): T => {
-  return (async (...args: any[]) => {
+  return (async (...args: unknown[]) => {
     return errorRecoveryManager.executeWithRetry(
       () => fn(...args),
       operationId,
@@ -371,7 +369,7 @@ export const withErrorRecovery = <T extends (...args: any[]) => Promise<any>>(
 
 // React hook for error boundary functionality
 export const useErrorRecovery = () => {
-  const handleError = (error: any, options: ErrorRecoveryOptions = {}) => {
+  const handleError = (error: unknown, options: ErrorRecoveryOptions = {}) => {
     errorRecoveryManager.handleError(error, options)
   }
 

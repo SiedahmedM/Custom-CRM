@@ -8,7 +8,6 @@ import { Database } from '@/types/database'
 type Customer = Database['public']['Tables']['customers']['Row']
 type CustomerInsert = Database['public']['Tables']['customers']['Insert']
 type CustomerUpdate = Database['public']['Tables']['customers']['Update']
-type Payment = Database['public']['Tables']['payments']['Row']
 type PaymentInsert = Database['public']['Tables']['payments']['Insert']
 
 export interface CustomerWithDetails extends Customer {
@@ -190,7 +189,7 @@ export function useRealtimeCustomers(filters?: {
     return () => {
       realtimeManager.unsubscribe(customersChannel)
     }
-  }, [filters, queryClient, refetch])
+  }, [filters, queryClient, matchesFilters, refetch])
 
   // Set up real-time subscription for payments (affects customer balances)
   useEffect(() => {
@@ -261,7 +260,7 @@ export function useRealtimeCustomers(filters?: {
       toast.success('Customer added successfully!')
       refetch()
     },
-    onError: (error: any) => {
+    onError: (error: unknown) => {
       toast.error('Failed to add customer: ' + error.message)
     },
   })
@@ -279,7 +278,7 @@ export function useRealtimeCustomers(filters?: {
     onSuccess: () => {
       toast.success('Customer updated successfully!')
     },
-    onError: (error: any) => {
+    onError: (error: unknown) => {
       toast.error('Failed to update customer: ' + error.message)
     },
   })
@@ -337,7 +336,7 @@ export function useRealtimeCustomers(filters?: {
       // Refetch to get accurate balance from server
       setTimeout(() => refetch(), 1000)
     },
-    onError: (error: any, variables) => {
+    onError: (error: unknown, _variables: unknown) => {
       toast.error('Failed to record payment: ' + error.message)
       // Revert optimistic update
       refetch()
@@ -375,7 +374,7 @@ export function useRealtimeCustomers(filters?: {
         duration: 3000,
       })
     },
-    onError: (error: any) => {
+    onError: (error: unknown) => {
       toast.error('Failed to send reminder: ' + error.message)
     },
   })

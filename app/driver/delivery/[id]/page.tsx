@@ -398,7 +398,7 @@ export default function DeliveryCompletionPage({ params }: { params: { id: strin
               onClick={handleArrivedAtCustomer}
               className="w-full bg-blue-600 text-white py-4 rounded-2xl font-semibold text-[17px] active:bg-blue-700 transition-colors"
             >
-              I've Arrived at Customer
+              I&apos;ve Arrived at Customer
             </button>
           )}
 
@@ -571,7 +571,7 @@ export default function DeliveryCompletionPage({ params }: { params: { id: strin
                       ${remainingBalance.toFixed(2)}
                     </p>
                     <p className="text-[13px] text-orange-700 mt-1">
-                      This amount will remain on the customer's account
+                      This amount will remain on the customer&apos;s account
                     </p>
                   </div>
                 )}

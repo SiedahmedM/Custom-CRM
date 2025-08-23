@@ -27,7 +27,7 @@ export function PWAInstaller() {
 
     // Check if already installed
     const isStandalone = window.matchMedia('(display-mode: standalone)').matches ||
-                        (window.navigator as any).standalone === true
+                        (window.navigator as {standalone?: boolean}).standalone === true
     setIsInStandaloneMode(isStandalone)
 
     // Listen for beforeinstallprompt (Android/PWA)
@@ -202,10 +202,10 @@ export function PWAInstaller() {
                   </div>
                   <div className="flex-1">
                     <p className="text-[15px] font-semibold text-gray-900 mb-2">
-                      Select "Add to Home Screen"
+                      Select &quot;Add to Home Screen&quot;
                     </p>
                     <p className="text-[13px] text-gray-600">
-                      Scroll down in the share menu and tap "Add to Home Screen"
+                      Scroll down in the share menu and tap &quot;Add to Home Screen&quot;
                     </p>
                   </div>
                 </div>
@@ -216,7 +216,7 @@ export function PWAInstaller() {
                   </div>
                   <div className="flex-1">
                     <p className="text-[15px] font-semibold text-gray-900 mb-2">
-                      Tap "Add" to confirm
+                      Tap &quot;Add&quot; to confirm
                     </p>
                     <p className="text-[13px] text-gray-600">
                       The app will be added to your home screen for easy access

@@ -7,27 +7,18 @@ import { ConnectionStatus } from '@/components/ConnectionStatus'
 import { useRealtimeCustomers } from '@/hooks/useRealtimeCustomers'
 import { 
   ArrowLeft, 
-  Plus, 
   Search, 
-  Filter,
   AlertTriangle,
   DollarSign,
   Clock,
   User,
   Send,
   Eye,
-  Calendar,
-  TrendingUp,
-  TrendingDown,
   RefreshCw,
-  CheckCircle,
-  XCircle,
-  Phone as PhoneIcon,
-  MessageSquare,
-  CreditCard
+  CheckCircle
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { format, differenceInDays } from 'date-fns'
+import { format } from 'date-fns'
 import { toast } from 'react-hot-toast'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
@@ -49,7 +40,7 @@ export default function OutstandingBalancesPage() {
   const [searchQuery, setSearchQuery] = useState('')
   const [sortBy, setSortBy] = useState<'balance' | 'days' | 'customer'>('balance')
   const [showPaymentModal, setShowPaymentModal] = useState(false)
-  const [selectedCustomer, setSelectedCustomer] = useState<any>(null)
+  const [selectedCustomer, setSelectedCustomer] = useState<typeof customers[0] | null>(null)
   const [showReminderModal, setShowReminderModal] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
 
@@ -127,7 +118,7 @@ export default function OutstandingBalancesPage() {
     toast.success('Balances refreshed')
   }
 
-  const handleAddPayment = (customer: any) => {
+  const handleAddPayment = (customer: typeof customers[0]) => {
     setSelectedCustomer(customer)
     setValue('customer_id', customer.id)
     setValue('amount', customer.current_balance) // Default to full balance
@@ -152,7 +143,7 @@ export default function OutstandingBalancesPage() {
     }
   }
 
-  const handleSendReminder = async (customer: any, message?: string) => {
+  const handleSendReminder = async (customer: typeof customers[0], message?: string) => {
     try {
       await sendBalanceReminder.mutateAsync({
         customer_id: customer.id,
@@ -283,7 +274,7 @@ export default function OutstandingBalancesPage() {
             ].map(({ value, label, icon: Icon }) => (
               <button
                 key={value}
-                onClick={() => setSortBy(value as any)}
+                onClick={() => setSortBy(value as 'balance' | 'days' | 'customer')}
                 className={`flex items-center gap-2 px-3 py-2 rounded-xl text-[13px] font-medium transition-all ${
                   sortBy === value
                     ? 'bg-blue-600 text-white'
@@ -566,7 +557,7 @@ export default function OutstandingBalancesPage() {
               </h3>
               
               <p className="text-[15px] text-gray-600 mb-4">
-                Send a reminder to <strong>{selectedCustomer.assigned_driver?.name}</strong> about {selectedCustomer.shop_name}'s outstanding balance of <strong>${selectedCustomer.current_balance.toFixed(2)}</strong>?
+                Send a reminder to <strong>{selectedCustomer.assigned_driver?.name}</strong> about {selectedCustomer.shop_name}&apos;s outstanding balance of <strong>${selectedCustomer.current_balance.toFixed(2)}</strong>?
               </p>
 
               <div className="flex gap-3">

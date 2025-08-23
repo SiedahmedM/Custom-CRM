@@ -303,7 +303,7 @@ export function useRealtimePitches(filters?: {
   // Log new pitch with GPS verification
   const logPitch = useMutation({
     mutationFn: async (pitchData: PitchInsert & { auto_verify_location?: boolean }) => {
-      let finalPitchData = { ...pitchData }
+      const finalPitchData = { ...pitchData }
 
       // Get current location if not provided and auto-verify is enabled
       if (pitchData.auto_verify_location && !pitchData.latitude && !pitchData.longitude) {
@@ -348,7 +348,7 @@ export function useRealtimePitches(filters?: {
       if (error) throw error
       return data
     },
-    onMutate: async (pitchData) => {
+    onMutate: async () => {
       // Haptic feedback
       if (window.navigator.vibrate) {
         window.navigator.vibrate(10)
