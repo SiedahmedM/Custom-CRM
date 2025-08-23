@@ -254,12 +254,12 @@ export default function InventoryPage() {
                       <div className="flex items-start gap-3 mb-3">
                         <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${
                           item.current_quantity === 0 ? 'bg-red-50' :
-                          item.current_quantity <= item.reorder_threshold ? 'bg-orange-50' :
+                          item.current_quantity <= (item.reorder_threshold || 0) ? 'bg-orange-50' :
                           'bg-green-50'
                         }`}>
                           <Package className={`w-5 h-5 ${
                             item.current_quantity === 0 ? 'text-red-600' :
-                            item.current_quantity <= item.reorder_threshold ? 'text-orange-600' :
+                            item.current_quantity <= (item.reorder_threshold || 0) ? 'text-orange-600' :
                             'text-green-600'
                           }`} />
                         </div>
@@ -277,7 +277,7 @@ export default function InventoryPage() {
                         <div>
                           <p className={`text-[16px] font-bold ${
                             item.current_quantity === 0 ? 'text-red-600' :
-                            item.current_quantity <= item.reorder_threshold ? 'text-orange-600' :
+                            item.current_quantity <= (item.reorder_threshold || 0) ? 'text-orange-600' :
                             'text-green-600'
                           }`}>
                             {item.current_quantity}
@@ -308,15 +308,15 @@ export default function InventoryPage() {
                       <div className="mt-3">
                         <div className="flex items-center justify-between mb-1">
                           <span className="text-[11px] text-gray-500">
-                            Reorder at {item.reorder_threshold}
+                            Reorder at {item.reorder_threshold || 0}
                           </span>
                           <span className={`text-[11px] font-medium ${
                             item.current_quantity === 0 ? 'text-red-600' :
-                            item.current_quantity <= item.reorder_threshold ? 'text-orange-600' :
+                            item.current_quantity <= (item.reorder_threshold || 0) ? 'text-orange-600' :
                             'text-green-600'
                           }`}>
                             {item.current_quantity === 0 ? 'OUT OF STOCK' :
-                             item.current_quantity <= item.reorder_threshold ? 'LOW STOCK' :
+                             item.current_quantity <= (item.reorder_threshold || 0) ? 'LOW STOCK' :
                              'IN STOCK'}
                           </span>
                         </div>
@@ -324,11 +324,11 @@ export default function InventoryPage() {
                           <div 
                             className={`h-1.5 rounded-full transition-all ${
                               item.current_quantity === 0 ? 'bg-red-500' :
-                              item.current_quantity <= item.reorder_threshold ? 'bg-orange-500' :
+                              item.current_quantity <= (item.reorder_threshold || 0) ? 'bg-orange-500' :
                               'bg-green-500'
                             }`}
                             style={{ 
-                              width: `${Math.min(100, (item.current_quantity / (item.reorder_threshold * 2)) * 100)}%` 
+                              width: `${Math.min(100, (item.current_quantity / ((item.reorder_threshold || 1) * 2)) * 100)}%` 
                             }}
                           />
                         </div>

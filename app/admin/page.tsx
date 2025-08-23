@@ -116,11 +116,14 @@ export default function AdminDashboard() {
         .select('current_balance')
         .gt('current_balance', 0)
 
-      // Fetch low stock items
-      const { data: inventory } = await supabase
+      // Fetch all inventory items (filter low stock in JS)
+      const { data: allInventory } = await supabase
         .from('inventory')
         .select('*')
-        .raw('current_quantity <= reorder_threshold')
+      
+      const inventory = (allInventory || []).filter((item: {current_quantity: number; reorder_threshold: number | null}) => 
+        item.current_quantity <= (item.reorder_threshold || 0)
+      )
 
       // Fetch driver performance
       const { data: drivers } = await supabase
