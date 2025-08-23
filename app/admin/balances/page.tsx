@@ -130,9 +130,14 @@ export default function OutstandingBalancesPage() {
 
     try {
       await addPayment.mutateAsync({
-        ...data,
+        customer_id: data.customer_id,
+        amount: data.amount,
+        payment_method: data.payment_method,
+        reference_number: data.reference_number || null,
+        notes: data.notes || null,
         payment_date: new Date().toISOString(),
-        user_id: user.id
+        order_id: null,
+        processed_by: user.id
       })
       
       setShowPaymentModal(false)

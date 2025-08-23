@@ -1,16 +1,15 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
-import { ArrowLeft, Search, AlertCircle, Check, X, Package, User, Phone as PhoneIcon, MapPin, Calendar, DollarSign } from 'lucide-react'
+import { ArrowLeft, Search, AlertCircle, X, Package } from 'lucide-react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { createClient } from '@/lib/supabase/client'
 import { toast } from 'react-hot-toast'
 import { motion, AnimatePresence } from 'framer-motion'
-import { format } from 'date-fns'
 
 const orderSchema = z.object({
   customer_id: z.string().min(1, 'Please select a customer'),
@@ -80,20 +79,20 @@ export default function NewOrderPage() {
   useEffect(() => {
     loadCustomers()
     loadInventory()
-  }, [])
+  }, [loadCustomers, loadInventory])
 
-  const loadCustomers = async () => {
-    const { data, error } = await supabase
+  const loadCustomers = useCallback(async () => {
+    const { data } = await supabase
       .from('customers')
       .select('*')
       .eq('is_active', true)
       .order('shop_name')
 
     if (data) setCustomers(data)
-  }
+  }, [supabase])
 
-  const loadInventory = async () => {
-    const { data, error } = await supabase
+  const loadInventory = useCallback(async () => {
+    const { data } = await supabase
       .from('inventory')
       .select('*')
       .eq('is_active', true)
@@ -101,7 +100,7 @@ export default function NewOrderPage() {
       .order('part_number')
 
     if (data) setInventory(data)
-  }
+  }, [supabase])
 
   const filteredCustomers = customers.filter(c => 
     c.shop_name.toLowerCase().includes(searchQuery.toLowerCase())
@@ -112,7 +111,7 @@ export default function NewOrderPage() {
     p.description.toLowerCase().includes(partSearchQuery.toLowerCase())
   )
 
-  const selectCustomer = (customer: any) => {
+  const selectCustomer = (customer: {id: string; shop_name: string; contact_name: string; address: string; phone: string}) => {
     setSelectedCustomer(customer)
     setValue('customer_id', customer.id)
     setValue('delivery_address', customer.address)
@@ -122,7 +121,7 @@ export default function NewOrderPage() {
     setSearchQuery('')
   }
 
-  const addItem = (part: any) => {
+  const addItem = (part: {id: string; part_number: string; description: string; selling_price: number}) => {
     const existingItem = selectedItems.find(i => i.inventory_id === part.id)
     
     if (existingItem) {
@@ -139,7 +138,7 @@ export default function NewOrderPage() {
 
     const updatedItems = [...selectedItems, newItem]
     setSelectedItems(updatedItems)
-    setValue('items', updatedItems.map(({ part, ...item }) => item))
+    setValue('items', updatedItems.map(({ ...item }) => item))
     setShowPartSearch(false)
     setPartSearchQuery('')
     
@@ -161,13 +160,13 @@ export default function NewOrderPage() {
     const updatedItems = [...selectedItems]
     updatedItems[index].quantity = quantity
     setSelectedItems(updatedItems)
-    setValue('items', updatedItems.map(({ part, ...item }) => item))
+    setValue('items', updatedItems.map(({ ...item }) => item))
   }
 
   const removeItem = (index: number) => {
     const updatedItems = selectedItems.filter((_, i) => i !== index)
     setSelectedItems(updatedItems)
-    setValue('items', updatedItems.map(({ part, ...item }) => item))
+    setValue('items', updatedItems.map(({ ...item }) => item))
   }
 
   const calculateTotal = () => {

@@ -10,21 +10,15 @@ import {
   ArrowLeft, 
   MapPin, 
   Phone as PhoneIcon,
-  Clock,
   Package,
   DollarSign,
   CreditCard,
   Banknote,
-  CheckCircle,
   AlertCircle,
-  User,
   FileText,
-  Camera,
-  Navigation,
-  Signature
+  Navigation
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { format } from 'date-fns'
 import { toast } from 'react-hot-toast'
 import { createClient } from '@/lib/supabase/client'
 import { useForm } from 'react-hook-form'

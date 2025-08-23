@@ -90,8 +90,7 @@ export class ErrorRecoveryManager {
       maxRetries = 3,
       retryDelay = 1000,
       exponentialBackoff = true,
-      showToast = true,
-      criticalError = false
+      showToast = true
     } = options
 
     let attempt = 0

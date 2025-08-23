@@ -6,12 +6,9 @@ const nextConfig: NextConfig = {
     // Critical errors (syntax, type) will still fail the build
     ignoreDuringBuilds: false,
   },
-  experimental: {
-    turbo: {
-      rules: {
-        // Turbo-specific optimizations for faster builds
-      }
-    }
+  // Turbopack configuration
+  turbopack: {
+    // Add turbopack-specific optimizations if needed
   }
 };
 

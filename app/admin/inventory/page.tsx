@@ -25,7 +25,6 @@ export default function InventoryPage() {
   const { user, isAdmin } = useAuth()
   const [searchQuery, setSearchQuery] = useState('')
   const [filterType, setFilterType] = useState<'all' | 'low_stock' | 'out_of_stock'>('all')
-  const [showAdjustModal, setShowAdjustModal] = useState(false)
   const [selectedItem, setSelectedItem] = useState<typeof inventory[0] | null>(null)
   const [refreshing, setRefreshing] = useState(false)
 
@@ -72,7 +71,7 @@ export default function InventoryPage() {
   const filteredInventory = inventory.filter(item => {
     switch (filterType) {
       case 'low_stock':
-        return item.current_quantity <= item.reorder_threshold && item.current_quantity > 0
+        return item.current_quantity <= (item.reorder_threshold || 0) && item.current_quantity > 0
       case 'out_of_stock':
         return item.current_quantity === 0
       default:
@@ -92,26 +91,6 @@ export default function InventoryPage() {
     toast.success('Inventory refreshed')
   }
 
-  const _handleAdjustStock = async (adjustment: {
-    adjustment_type: 'add' | 'remove'
-    quantity: number
-    reason: string
-    notes?: string
-  }) => {
-    if (!selectedItem || !user) return
-
-    try {
-      await adjustInventoryStock.mutateAsync({
-        inventory_id: selectedItem.id,
-        user_id: user.id,
-        ...adjustment
-      })
-      setShowAdjustModal(false)
-      setSelectedItem(null)
-    } catch (error) {
-      console.error('Failed to adjust stock:', error)
-    }
-  }
 
   if (!user) return null
 
@@ -266,7 +245,8 @@ export default function InventoryPage() {
                   className="bg-white rounded-2xl p-4 shadow-sm border border-gray-200 active:scale-[0.98] transition-transform"
                   onClick={() => {
                     setSelectedItem(item)
-                    setShowAdjustModal(true)
+                    // Navigate to inventory detail page or show modal
+                    console.log('View inventory item:', item.id)
                   }}
                 >
                   <div className="flex items-start justify-between">
