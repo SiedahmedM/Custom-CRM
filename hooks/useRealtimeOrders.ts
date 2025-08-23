@@ -288,8 +288,28 @@ export function useRealtimeOrders(filters?: {
 
   // Update order status with real-time trigger
   const updateOrderStatus = useMutation({
-    mutationFn: async ({ id, status, notes }: { id: string; status: Order['status']; notes?: string }) => {
+    mutationFn: async ({ 
+      orderId, 
+      id, 
+      status, 
+      notes, 
+      driverId 
+    }: { 
+      orderId?: string
+      id?: string
+      status: Order['status']
+      notes?: string
+      driverId?: string
+    }) => {
+      const orderIdToUpdate = orderId || id
+      if (!orderIdToUpdate) throw new Error('Order ID is required')
+      
       const updates: OrderUpdate = { status }
+      
+      // Add driver assignment
+      if (driverId) {
+        updates.driver_id = driverId
+      }
       
       // Add status-specific fields
       if (status === 'out_for_delivery') {
@@ -303,7 +323,7 @@ export function useRealtimeOrders(filters?: {
       const { error } = await supabase
         .from('orders')
         .update(updates)
-        .eq('id', id)
+        .eq('id', orderIdToUpdate)
 
       if (error) throw error
 

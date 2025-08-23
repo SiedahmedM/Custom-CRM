@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { useAuth } from '@/contexts/AuthContext'
 import { useRouter } from 'next/navigation'
 import { ConnectionStatus } from '@/components/ConnectionStatus'
@@ -16,11 +16,19 @@ import {
   XCircle,
   AlertCircle,
   ChevronRight,
-  Archive
+  Archive,
+  UserCheck,
+  X,
+  Target,
+  MapPin,
+  TrendingUp,
+  Trophy,
+  Zap
 } from 'lucide-react'
 import { useRealtimeOrders } from '@/hooks/useRealtimeOrders'
+import { useRealtimePitches } from '@/hooks/useRealtimePitches'
 import { format, isToday, isThisWeek, isThisMonth } from 'date-fns'
-import { motion } from 'framer-motion'
+import { motion, AnimatePresence } from 'framer-motion'
 import { toast } from 'react-hot-toast'
 import { createClient } from '@/lib/supabase/client'
 import { useQuery } from '@tanstack/react-query'
@@ -49,6 +57,14 @@ export default function AdminDashboard() {
   const supabase = createClient()
   const [refreshing, setRefreshing] = useState(false)
   const [selectedTimeFrame, setSelectedTimeFrame] = useState<'today' | 'week' | 'month'>('today')
+  const [showReassignModal, setShowReassignModal] = useState(false)
+  const [selectedOrder, setSelectedOrder] = useState<{
+    id: string
+    order_number: string
+    total_amount: number
+    customer: { shop_name: string }
+  } | null>(null)
+  const [dismissedOrders, setDismissedOrders] = useState<Set<string>>(new Set())
 
   // Protect route
   useEffect(() => {
@@ -78,8 +94,25 @@ export default function AdminDashboard() {
   // Get real-time orders
   const { 
     orders, 
+    updateOrderStatus,
     refetch: refetchOrders
   } = useRealtimeOrders()
+
+  // Get real-time pitches
+  const {
+    pitches,
+    driverPerformance: pitchDriverPerformance,
+    connectionStatus: pitchConnectionStatus
+  } = useRealtimePitches({
+    date_range: {
+      start: selectedTimeFrame === 'today' 
+        ? new Date(new Date().setHours(0, 0, 0, 0))
+        : selectedTimeFrame === 'week'
+        ? new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
+        : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
+      end: new Date()
+    }
+  })
 
   // Get dashboard stats
   const { data: stats, refetch: refetchStats } = useQuery({
@@ -196,10 +229,12 @@ export default function AdminDashboard() {
     refetchStats()
   }, [orders?.length, refetchStats])
 
-  // Filter orders for display
+  // Filter orders for display (exclude dismissed orders)
   const urgentOrders = orders.filter(o => 
-    o.status === 'needs_reassignment' || 
-    (o.customer?.current_balance > 0 && o.status === 'pending')
+    !dismissedOrders.has(o.id) && (
+      o.status === 'needs_reassignment' || 
+      (o.customer?.current_balance > 0 && o.status === 'pending')
+    )
   )
 
   // Show orders from last 12 hours
@@ -222,6 +257,21 @@ export default function AdminDashboard() {
     
     setRefreshing(false)
     toast.success('Dashboard refreshed')
+  }
+
+  const handleDismissOrder = (orderId: string) => {
+    setDismissedOrders(prev => new Set([...prev, orderId]))
+    toast.success('Alert dismissed')
+  }
+
+  const handleReassignOrder = (order: {
+    id: string
+    order_number: string
+    total_amount: number
+    customer: { shop_name: string }
+  }) => {
+    setSelectedOrder(order)
+    setShowReassignModal(true)
   }
 
 
@@ -417,11 +467,10 @@ export default function AdminDashboard() {
                 key={order.id}
                 initial={{ opacity: 0, x: -20 }}
                 animate={{ opacity: 1, x: 0 }}
-                className="bg-red-50 border border-red-200 rounded-2xl p-4 active:scale-[0.98] transition-transform"
-                onClick={() => router.push(`/admin/orders/${order.id}`)}
+                className="bg-red-50 border border-red-200 rounded-2xl p-4"
               >
                 <div className="flex items-start justify-between">
-                  <div className="flex-1">
+                  <div className="flex-1 cursor-pointer" onClick={() => router.push(`/admin/orders/${order.id}`)}>
                     <div className="flex items-center gap-2 mb-2">
                       {order.status === 'needs_reassignment' ? (
                         <XCircle className="w-4 h-4 text-red-500" />
@@ -442,13 +491,218 @@ export default function AdminDashboard() {
                       {order.order_number} • ${order.total_amount.toFixed(2)}
                     </p>
                   </div>
-                  <ChevronRight className="w-5 h-5 text-gray-400" />
+                  
+                  {/* Action buttons - only show for orders that need reassignment */}
+                  <div className="flex items-center gap-2 ml-3">
+                    {order.status === 'needs_reassignment' && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          handleReassignOrder(order)
+                        }}
+                        className="bg-blue-600 text-white p-2 rounded-lg active:bg-blue-700 transition-colors"
+                        title="Reassign to another driver"
+                      >
+                        <UserCheck className="w-4 h-4" />
+                      </button>
+                    )}
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        handleDismissOrder(order.id)
+                      }}
+                      className="bg-gray-600 text-white p-2 rounded-lg active:bg-gray-700 transition-colors"
+                      title="Dismiss alert"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
                 </div>
               </motion.div>
             ))}
           </div>
         </div>
       )}
+
+      {/* PROMINENT PITCH MONITORING SECTION */}
+      <div className="px-5 py-4 border-t border-gray-100 bg-gradient-to-br from-blue-50 to-indigo-50">
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 bg-blue-600 rounded-xl flex items-center justify-center">
+              <Target className="w-4 h-4 text-white" />
+            </div>
+            <div>
+              <h2 className="text-[17px] font-bold text-gray-900">
+                Live Pitch Monitoring
+              </h2>
+              <div className="flex items-center gap-2">
+                <div className={`w-2 h-2 rounded-full ${pitchConnectionStatus ? 'bg-green-500' : 'bg-red-500'} animate-pulse`} />
+                <span className="text-[11px] text-gray-500">
+                  {pitchConnectionStatus ? 'Real-time active' : 'Connection lost'}
+                </span>
+              </div>
+            </div>
+          </div>
+          <button
+            onClick={() => router.push('/admin/pitches')}
+            className="bg-blue-600 text-white px-4 py-2 rounded-xl text-[13px] font-medium active:bg-blue-700 transition-colors"
+          >
+            View All
+          </button>
+        </div>
+
+        {/* Today's Pitch Stats */}
+        <div className="grid grid-cols-3 gap-3 mb-4">
+          <div className="bg-white rounded-2xl p-3 shadow-sm">
+            <div className="text-center">
+              <p className="text-[20px] font-bold text-blue-600">
+                {pitches.filter(p => isToday(new Date(p.pitch_date))).length}
+              </p>
+              <p className="text-[10px] text-gray-500 mt-0.5">Today&apos;s Pitches</p>
+            </div>
+          </div>
+          <div className="bg-white rounded-2xl p-3 shadow-sm">
+            <div className="text-center">
+              <p className="text-[20px] font-bold text-green-600">
+                {pitches.filter(p => isToday(new Date(p.pitch_date)) && p.interest_level === 'high').length}
+              </p>
+              <p className="text-[10px] text-gray-500 mt-0.5">High Interest</p>
+            </div>
+          </div>
+          <div className="bg-white rounded-2xl p-3 shadow-sm">
+            <div className="text-center">
+              <p className="text-[20px] font-bold text-purple-600">
+                {pitchDriverPerformance.reduce((sum, d) => sum + d.total_pitches, 0) > 0 
+                  ? Math.round((pitchDriverPerformance.reduce((sum, d) => sum + d.successful_pitches, 0) / pitchDriverPerformance.reduce((sum, d) => sum + d.total_pitches, 0)) * 100)
+                  : 0}%
+              </p>
+              <p className="text-[10px] text-gray-500 mt-0.5">Success Rate</p>
+            </div>
+          </div>
+        </div>
+
+        {/* Live Activity Feed */}
+        <div className="bg-white rounded-2xl p-4 shadow-sm mb-4">
+          <div className="flex items-center gap-2 mb-3">
+            <Zap className="w-4 h-4 text-orange-500" />
+            <h3 className="text-[15px] font-semibold text-gray-900">Live Activity</h3>
+          </div>
+          <div className="space-y-3 max-h-40 overflow-y-auto">
+            {pitches.slice(0, 5).map((pitch, index) => (
+              <motion.div
+                key={pitch.id}
+                initial={{ opacity: 0, x: -20 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: index * 0.1 }}
+                className="flex items-center gap-3 p-2 bg-gray-50 rounded-xl"
+              >
+                <div className={`w-2 h-2 rounded-full ${
+                  pitch.verification_score >= 80 ? 'bg-green-500' :
+                  pitch.verification_score >= 60 ? 'bg-yellow-500' : 'bg-red-500'
+                }`} />
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <p className="text-[13px] font-medium text-gray-900 truncate">
+                      {pitch.driver?.name}
+                    </p>
+                    <span className={`text-[10px] px-2 py-0.5 rounded-full ${
+                      pitch.interest_level === 'high' ? 'bg-green-100 text-green-700' :
+                      pitch.interest_level === 'medium' ? 'bg-yellow-100 text-yellow-700' :
+                      'bg-red-100 text-red-700'
+                    }`}>
+                      {pitch.interest_level}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-gray-500">
+                    {pitch.customer?.shop_name || 'Cold pitch'} &bull; {format(new Date(pitch.pitch_date), 'h:mm a')}
+                  </p>
+                </div>
+                <div className="flex items-center gap-1">
+                  {pitch.latitude && pitch.longitude && (
+                    <MapPin className="w-3 h-3 text-green-500" />
+                  )}
+                  {pitch.potential_order_value && (
+                    <span className="text-[10px] font-medium text-gray-600">
+                      ${pitch.potential_order_value}
+                    </span>
+                  )}
+                </div>
+              </motion.div>
+            ))}
+            {pitches.length === 0 && (
+              <div className="text-center py-4">
+                <Target className="w-8 h-8 text-gray-300 mx-auto mb-2" />
+                <p className="text-[13px] text-gray-500">No pitch activity yet today</p>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Real-time Driver Leaderboard */}
+        <div className="bg-white rounded-2xl p-4 shadow-sm">
+          <div className="flex items-center gap-2 mb-3">
+            <Trophy className="w-4 h-4 text-yellow-500" />
+            <h3 className="text-[15px] font-semibold text-gray-900">Pitch Leaderboard</h3>
+          </div>
+          <div className="space-y-3">
+            {pitchDriverPerformance.slice(0, 3).map((driver, index) => (
+              <motion.div
+                key={driver.driver_id}
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                transition={{ delay: index * 0.1 }}
+                className={`flex items-center gap-3 p-3 rounded-xl transition-all ${
+                  index === 0 ? 'bg-yellow-50 border border-yellow-200' :
+                  index === 1 ? 'bg-gray-50 border border-gray-200' :
+                  'bg-orange-50 border border-orange-200'
+                }`}
+              >
+                <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-[13px] ${
+                  index === 0 ? 'bg-yellow-500 text-white' :
+                  index === 1 ? 'bg-gray-500 text-white' :
+                  'bg-orange-500 text-white'
+                }`}>
+                  {index + 1}
+                </div>
+                <div className="flex-1">
+                  <p className="font-medium text-[14px] text-gray-900">
+                    {driver.driver_name}
+                  </p>
+                  <div className="flex items-center gap-4 mt-1">
+                    <span className="text-[11px] text-gray-600">
+                      {driver.total_pitches} pitches
+                    </span>
+                    <span className="text-[11px] text-green-600 font-medium">
+                      {driver.success_rate.toFixed(0)}% success
+                    </span>
+                    <span className="text-[11px] text-blue-600">
+                      ${driver.potential_value.toFixed(0)} potential
+                    </span>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <div className={`text-[16px] font-bold ${
+                    index === 0 ? 'text-yellow-600' :
+                    index === 1 ? 'text-gray-600' :
+                    'text-orange-600'
+                  }`}>
+                    {driver.verification_issues === 0 ? '✓' : '⚠️'}
+                  </div>
+                  <p className="text-[10px] text-gray-500">
+                    {format(new Date(driver.last_activity), 'h:mm a')}
+                  </p>
+                </div>
+              </motion.div>
+            ))}
+            {pitchDriverPerformance.length === 0 && (
+              <div className="text-center py-4">
+                <TrendingUp className="w-8 h-8 text-gray-300 mx-auto mb-2" />
+                <p className="text-[13px] text-gray-500">No driver activity yet</p>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
 
       {/* Driver Performance */}
       <div className="px-5 py-4 border-t border-gray-100">
@@ -600,8 +854,199 @@ export default function AdminDashboard() {
         </div>
       </div>
 
+      {/* Reassign Modal */}
+      <AnimatePresence>
+        {showReassignModal && selectedOrder && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/50 flex items-end justify-center z-50"
+            onClick={() => setShowReassignModal(false)}
+          >
+            <ReassignModal
+              order={selectedOrder}
+              onClose={() => setShowReassignModal(false)}
+              updateOrderStatus={updateOrderStatus}
+              onSuccess={() => {
+                setShowReassignModal(false)
+                setDismissedOrders(prev => new Set([...prev, selectedOrder.id]))
+              }}
+            />
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Bottom Safe Area */}
       <div style={{ height: 'env(safe-area-inset-bottom)' }} />
     </div>
+  )
+}
+
+// Reassign Modal Component
+function ReassignModal({ 
+  order, 
+  onClose, 
+  updateOrderStatus, 
+  onSuccess 
+}: { 
+  order: {
+    id: string
+    order_number: string
+    total_amount: number
+    customer: { shop_name: string }
+  }
+  onClose: () => void
+  updateOrderStatus: {
+    mutateAsync: (params: {
+      orderId?: string
+      id?: string
+      status: 'pending' | 'assigned' | 'needs_reassignment' | 'out_for_delivery' | 'delivered' | 'cancelled'
+      notes?: string
+      driverId?: string
+    }) => Promise<void>
+  }
+  onSuccess: () => void
+}) {
+  const supabase = createClient()
+  const [drivers, setDrivers] = useState<Array<{
+    id: string
+    name: string
+    access_key: string
+  }>>([])
+  const [selectedDriverId, setSelectedDriverId] = useState('')
+  const [isSubmitting, setIsSubmitting] = useState(false)
+
+  const fetchDrivers = useCallback(async () => {
+    const { data } = await supabase
+      .from('users')
+      .select('*')
+      .eq('role', 'driver')
+      .eq('is_active', true)
+      .order('name')
+    
+    setDrivers(data || [])
+  }, [supabase])
+
+  useEffect(() => {
+    fetchDrivers()
+  }, [fetchDrivers])
+
+  const handleReassign = async () => {
+    if (!selectedDriverId) {
+      toast.error('Please select a driver')
+      return
+    }
+
+    setIsSubmitting(true)
+    try {
+      await updateOrderStatus.mutateAsync({
+        orderId: order.id,
+        status: 'assigned',
+        driverId: selectedDriverId
+      })
+
+      toast.success(`Order reassigned successfully!`)
+      onSuccess()
+    } catch (error) {
+      toast.error('Failed to reassign order')
+      console.error('Reassign error:', error)
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  return (
+    <motion.div
+      initial={{ y: '100%' }}
+      animate={{ y: 0 }}
+      exit={{ y: '100%' }}
+      className="bg-white rounded-t-3xl p-6 w-full max-h-[80vh] overflow-y-auto"
+      onClick={(e) => e.stopPropagation()}
+      style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
+    >
+      <div className="flex items-center justify-between mb-6">
+        <h2 className="text-[20px] font-bold text-gray-900">Reassign Order</h2>
+        <button
+          onClick={onClose}
+          className="p-2 active:scale-95 transition-transform"
+        >
+          <X className="w-6 h-6 text-gray-400" />
+        </button>
+      </div>
+
+      <div className="bg-gray-50 rounded-2xl p-4 mb-6">
+        <p className="text-[13px] text-gray-500 mb-1">Order Details</p>
+        <p className="font-semibold text-[15px] text-gray-900">
+          {order.customer.shop_name}
+        </p>
+        <p className="text-[13px] text-gray-600">
+          {order.order_number} • ${order.total_amount.toFixed(2)}
+        </p>
+      </div>
+
+      <div className="mb-6">
+        <label className="block text-[13px] font-medium text-gray-700 mb-3">
+          Select Driver
+        </label>
+        <div className="space-y-3 max-h-60 overflow-y-auto">
+          {drivers.map((driver) => (
+            <button
+              key={driver.id}
+              onClick={() => setSelectedDriverId(driver.id)}
+              className={`w-full p-4 rounded-2xl border transition-all ${
+                selectedDriverId === driver.id
+                  ? 'bg-blue-50 border-blue-200'
+                  : 'bg-white border-gray-200 active:bg-gray-50'
+              }`}
+            >
+              <div className="flex items-center gap-3">
+                <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
+                  selectedDriverId === driver.id ? 'bg-blue-100' : 'bg-gray-100'
+                }`}>
+                  <span className={`text-[13px] font-semibold ${
+                    selectedDriverId === driver.id ? 'text-blue-600' : 'text-gray-600'
+                  }`}>
+                    {driver.name.charAt(0)}
+                  </span>
+                </div>
+                <div className="flex-1 text-left">
+                  <p className="font-medium text-[15px] text-gray-900">
+                    {driver.name}
+                  </p>
+                  <p className="text-[13px] text-gray-500">
+                    Driver • {driver.access_key}
+                  </p>
+                </div>
+                {selectedDriverId === driver.id && (
+                  <CheckCircle className="w-5 h-5 text-blue-600" />
+                )}
+              </div>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="flex gap-3">
+        <button
+          onClick={onClose}
+          className="flex-1 bg-gray-100 text-gray-700 py-3 rounded-xl font-medium text-[15px] active:bg-gray-200 transition-colors"
+        >
+          Cancel
+        </button>
+        <button
+          onClick={handleReassign}
+          disabled={!selectedDriverId || isSubmitting}
+          className="flex-1 bg-blue-600 text-white py-3 rounded-xl font-medium text-[15px] active:bg-blue-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+        >
+          {isSubmitting ? (
+            <RefreshCw className="w-4 h-4 animate-spin" />
+          ) : (
+            <UserCheck className="w-4 h-4" />
+          )}
+          Reassign Order
+        </button>
+      </div>
+    </motion.div>
   )
 }

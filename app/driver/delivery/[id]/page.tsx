@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
 import { ConnectionStatus } from '@/components/ConnectionStatus'
@@ -33,7 +33,7 @@ const paymentSchema = z.object({
   payment_method: z.enum(['cash', 'check', 'card', 'transfer', 'other']),
   reference_number: z.string().optional(),
   notes: z.string().optional(),
-  customer_signature: z.string().optional(),
+  customer_signature: z.string().min(1, 'Customer signature is required'),
 })
 
 type PaymentFormData = z.infer<typeof paymentSchema>
@@ -46,6 +46,8 @@ export default function DeliveryCompletionPage({ params }: { params: { id: strin
   const [showPaymentForm, setShowPaymentForm] = useState(false)
   const [currentLocation, setCurrentLocation] = useState<GeolocationPosition | null>(null)
   const [deliveryStarted, setDeliveryStarted] = useState(false)
+  const [signature, setSignature] = useState('')
+  const [showSignaturePad, setShowSignaturePad] = useState(false)
 
   // Protect route
   useEffect(() => {
@@ -83,9 +85,15 @@ export default function DeliveryCompletionPage({ params }: { params: { id: strin
     defaultValues: {
       order_total: order?.total_amount || 0,
       amount_paid: 0,
-      payment_method: 'cash'
+      payment_method: 'cash',
+      customer_signature: ''
     }
   })
+
+  // Update signature in form when it changes
+  useEffect(() => {
+    setValue('customer_signature', signature)
+  }, [signature, setValue])
 
   const orderTotal = watch('order_total')
   const amountPaid = watch('amount_paid')
@@ -219,9 +227,9 @@ export default function DeliveryCompletionPage({ params }: { params: { id: strin
         window.navigator.vibrate([100, 50, 100])
       }
 
-      // Navigate back after a delay
+      // Navigate to cold pitch after a short delay
       setTimeout(() => {
-        router.push('/driver')
+        router.push(`/driver/cold-pitch/${order.id}`)
       }, 2000)
 
     } catch (error) {
@@ -437,28 +445,89 @@ export default function DeliveryCompletionPage({ params }: { params: { id: strin
                   </button>
                 </div>
 
-                {/* Payment Summary */}
-                <div className="bg-blue-50 rounded-2xl p-4 mb-6">
-                  <div className="space-y-2">
-                    <div className="flex justify-between">
-                      <span className="text-[15px] text-gray-700">Order Amount:</span>
-                      <span className="text-[15px] font-medium text-gray-900">
+                {/* Live Payment Calculations */}
+                <div className="space-y-3 mb-6">
+                  {/* Order Amount */}
+                  <div className="bg-gray-50 rounded-2xl p-4">
+                    <div className="flex justify-between items-center">
+                      <span className="text-[15px] text-gray-700">Current Order Amount:</span>
+                      <span className="text-[18px] font-semibold text-gray-900">
                         ${orderTotal.toFixed(2)}
                       </span>
                     </div>
-                    <div className="flex justify-between">
-                      <span className="text-[15px] text-gray-700">Previous Balance:</span>
-                      <span className="text-[15px] font-medium text-gray-900">
+                  </div>
+
+                  {/* Previous Balance - Highlighted if > 0 */}
+                  <div className={`rounded-2xl p-4 ${
+                    previousBalance > 0 
+                      ? 'bg-red-50 border-2 border-red-200' 
+                      : 'bg-gray-50'
+                  }`}>
+                    <div className="flex justify-between items-center">
+                      <div className="flex items-center gap-2">
+                        <span className="text-[15px] text-gray-700">Previous Balance:</span>
+                        {previousBalance > 0 && (
+                          <AlertCircle className="w-4 h-4 text-red-500" />
+                        )}
+                      </div>
+                      <span className={`text-[18px] font-semibold ${
+                        previousBalance > 0 ? 'text-red-700' : 'text-gray-900'
+                      }`}>
                         ${previousBalance.toFixed(2)}
                       </span>
                     </div>
-                    <div className="border-t border-blue-200 pt-2 flex justify-between">
-                      <span className="text-[17px] font-semibold text-gray-900">Total Due:</span>
-                      <span className="text-[20px] font-bold text-blue-900">
+                    {previousBalance > 0 && (
+                      <p className="text-[12px] text-red-600 mt-2 font-medium">
+                        ⚠️ Outstanding balance - collect with current order
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Total Due */}
+                  <div className="bg-blue-50 border-2 border-blue-200 rounded-2xl p-4">
+                    <div className="flex justify-between items-center">
+                      <span className="text-[17px] font-bold text-blue-900">TOTAL DUE:</span>
+                      <span className="text-[24px] font-black text-blue-900">
                         ${totalDue.toFixed(2)}
                       </span>
                     </div>
+                    <p className="text-[12px] text-blue-700 mt-1">
+                      Auto-calculated • Updates in real-time
+                    </p>
                   </div>
+
+                  {/* Live Remaining Balance */}
+                  {amountPaid > 0 && (
+                    <div className={`rounded-2xl p-4 border-2 ${
+                      remainingBalance > 0 
+                        ? 'bg-orange-50 border-orange-200'
+                        : remainingBalance < 0
+                        ? 'bg-green-50 border-green-200'
+                        : 'bg-gray-50 border-gray-200'
+                    }`}>
+                      <div className="flex justify-between items-center">
+                        <span className="text-[15px] font-medium">After Payment:</span>
+                        <div className="text-right">
+                          <span className={`text-[20px] font-bold ${
+                            remainingBalance > 0 
+                              ? 'text-orange-700'
+                              : remainingBalance < 0
+                              ? 'text-green-700'
+                              : 'text-gray-900'
+                          }`}>
+                            ${Math.abs(remainingBalance).toFixed(2)}
+                          </span>
+                          <p className="text-[11px] text-gray-600 mt-1">
+                            {remainingBalance > 0 
+                              ? 'Remaining balance'
+                              : remainingBalance < 0
+                              ? 'Change due to customer'
+                              : 'Fully paid'}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {/* Order Total (Editable) */}
@@ -541,7 +610,7 @@ export default function DeliveryCompletionPage({ params }: { params: { id: strin
                 </div>
 
                 {/* Notes */}
-                <div className="mb-6">
+                <div className="mb-4">
                   <label className="text-[13px] font-medium text-gray-600 uppercase tracking-wide mb-2 block">
                     Notes (Optional)
                   </label>
@@ -553,37 +622,67 @@ export default function DeliveryCompletionPage({ params }: { params: { id: strin
                   />
                 </div>
 
-                {/* Remaining Balance */}
-                {remainingBalance > 0 && (
-                  <div className="bg-orange-50 border border-orange-200 rounded-2xl p-4 mb-6">
-                    <div className="flex items-center gap-2 mb-2">
-                      <AlertCircle className="w-5 h-5 text-orange-600" />
-                      <span className="text-[15px] font-semibold text-orange-900">
-                        Remaining Balance
-                      </span>
+                {/* Customer Signature */}
+                <div className="mb-6">
+                  <label className="text-[13px] font-medium text-gray-600 uppercase tracking-wide mb-3 block">
+                    Customer Signature *
+                  </label>
+                  {signature ? (
+                    <div className="bg-white border-2 border-green-200 rounded-xl p-4">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-[13px] text-green-700 font-medium">✓ Signature Captured</span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSignature('')
+                            setShowSignaturePad(true)
+                          }}
+                          className="text-[13px] text-blue-600 font-medium"
+                        >
+                          Retake
+                        </button>
+                      </div>
+                      <div className="bg-gray-50 rounded-lg p-3 h-20 flex items-center justify-center">
+                        <span className="text-[13px] text-gray-600">📝 Signature on file</span>
+                      </div>
                     </div>
-                    <p className="text-[24px] font-bold text-orange-900">
-                      ${remainingBalance.toFixed(2)}
-                    </p>
-                    <p className="text-[13px] text-orange-700 mt-1">
-                      This amount will remain on the customer&apos;s account
-                    </p>
-                  </div>
-                )}
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setShowSignaturePad(true)}
+                      className="w-full bg-gray-100 border-2 border-gray-300 border-dashed rounded-xl p-6 text-center active:bg-gray-200 transition-colors"
+                    >
+                      <div className="flex flex-col items-center gap-2">
+                        <div className="w-12 h-12 bg-gray-200 rounded-full flex items-center justify-center">
+                          <span className="text-[20px]">✏️</span>
+                        </div>
+                        <span className="text-[15px] font-medium text-gray-700">Tap to Capture Signature</span>
+                        <span className="text-[13px] text-gray-500">Required for delivery completion</span>
+                      </div>
+                    </button>
+                  )}
+                  {errors.customer_signature && (
+                    <p className="text-red-500 text-[13px] mt-1">{errors.customer_signature.message}</p>
+                  )}
+                </div>
+
 
                 {/* Submit Button */}
                 <button
                   type="submit"
-                  disabled={isSubmitting}
+                  disabled={isSubmitting || !signature}
                   className="w-full bg-green-600 text-white py-4 rounded-2xl font-semibold text-[17px] disabled:opacity-50 disabled:cursor-not-allowed active:bg-green-700 transition-colors"
                 >
                   {isSubmitting ? (
                     <div className="flex items-center justify-center gap-2">
                       <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                      Completing Delivery...
+                      Processing Real-time Updates...
                     </div>
                   ) : (
-                    'Complete Delivery'
+                    <div className="flex items-center justify-center gap-2">
+                      <span>📋</span>
+                      Submit Payment & Complete Delivery
+                    </div>
                   )}
                 </button>
               </form>
@@ -591,6 +690,177 @@ export default function DeliveryCompletionPage({ params }: { params: { id: strin
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Signature Pad Modal */}
+      <AnimatePresence>
+        {showSignaturePad && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-5"
+            onClick={() => setShowSignaturePad(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="bg-white rounded-3xl p-6 w-full max-w-md"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-[18px] font-bold text-gray-900">Customer Signature</h3>
+                <button
+                  onClick={() => setShowSignaturePad(false)}
+                  className="p-2 text-gray-400 hover:text-gray-600"
+                >
+                  ×
+                </button>
+              </div>
+              
+              <div className="mb-4">
+                <div className="bg-gray-50 border-2 border-gray-200 rounded-2xl p-4 h-40 flex items-center justify-center">
+                  <SignaturePad onSignatureCapture={setSignature} />
+                </div>
+                <p className="text-[13px] text-gray-500 mt-2 text-center">
+                  Have the customer sign above to confirm delivery
+                </p>
+              </div>
+
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setShowSignaturePad(false)}
+                  className="flex-1 bg-gray-100 text-gray-700 py-3 rounded-xl font-medium text-[15px] active:bg-gray-200 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => {
+                    if (signature) {
+                      setShowSignaturePad(false)
+                    }
+                  }}
+                  disabled={!signature}
+                  className="flex-1 bg-blue-600 text-white py-3 rounded-xl font-medium text-[15px] active:bg-blue-700 transition-colors disabled:opacity-50"
+                >
+                  Save Signature
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  )
+}
+
+// Simple Canvas Signature Pad Component
+function SignaturePad({ onSignatureCapture }: { onSignatureCapture: (signature: string) => void }) {
+  const canvasRef = useRef<HTMLCanvasElement>(null)
+  const [isDrawing, setIsDrawing] = useState(false)
+
+  const startDrawing = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
+    setIsDrawing(true)
+    const canvas = canvasRef.current
+    if (!canvas) return
+
+    const rect = canvas.getBoundingClientRect()
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+
+    let clientX, clientY
+    if ('touches' in e) {
+      clientX = e.touches[0].clientX
+      clientY = e.touches[0].clientY
+    } else {
+      clientX = e.clientX
+      clientY = e.clientY
+    }
+
+    ctx.beginPath()
+    ctx.moveTo(clientX - rect.left, clientY - rect.top)
+  }
+
+  const draw = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
+    if (!isDrawing) return
+    
+    const canvas = canvasRef.current
+    if (!canvas) return
+
+    const rect = canvas.getBoundingClientRect()
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+
+    let clientX, clientY
+    if ('touches' in e) {
+      clientX = e.touches[0].clientX
+      clientY = e.touches[0].clientY
+    } else {
+      clientX = e.clientX
+      clientY = e.clientY
+    }
+
+    ctx.lineTo(clientX - rect.left, clientY - rect.top)
+    ctx.stroke()
+  }
+
+  const stopDrawing = () => {
+    if (!isDrawing) return
+    setIsDrawing(false)
+    
+    const canvas = canvasRef.current
+    if (!canvas) return
+
+    // Capture signature as base64 data URL
+    const dataURL = canvas.toDataURL('image/png')
+    onSignatureCapture(dataURL)
+  }
+
+  const clearCanvas = () => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height)
+    onSignatureCapture('')
+  }
+
+  useEffect(() => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+
+    ctx.strokeStyle = '#000'
+    ctx.lineWidth = 2
+    ctx.lineCap = 'round'
+    ctx.lineJoin = 'round'
+  }, [])
+
+  return (
+    <div className="w-full h-full relative">
+      <canvas
+        ref={canvasRef}
+        width={300}
+        height={120}
+        className="w-full h-full cursor-crosshair touch-none"
+        onMouseDown={startDrawing}
+        onMouseMove={draw}
+        onMouseUp={stopDrawing}
+        onMouseLeave={stopDrawing}
+        onTouchStart={startDrawing}
+        onTouchMove={draw}
+        onTouchEnd={stopDrawing}
+      />
+      <button
+        onClick={clearCanvas}
+        className="absolute top-2 right-2 bg-red-100 text-red-600 p-1 rounded text-[11px] active:bg-red-200 transition-colors"
+      >
+        Clear
+      </button>
     </div>
   )
 }
