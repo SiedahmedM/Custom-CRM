@@ -4,6 +4,7 @@ import React, { createContext, useContext, useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { toast } from 'react-hot-toast'
+import { Database } from '@/types/database'
 
 interface User {
   id: string
@@ -39,21 +40,30 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       const storedKey = localStorage.getItem('access_key')
       if (storedKey) {
-        const { data, error } = await supabase
+        const { data: userRecordRaw, error } = await supabase
           .from('users')
           .select('*')
           .eq('access_key', storedKey)
           .eq('is_active', true)
           .single()
+        const userRecord = userRecordRaw as (Database['public']['Tables']['users']['Row'] | null)
 
-        if (data && !error) {
-          setUser(data)
+        if (userRecord && !error) {
+          setUser({
+            id: userRecord.id,
+            access_key: userRecord.access_key,
+            name: userRecord.name,
+            role: userRecord.role,
+            phone: userRecord.phone || undefined,
+            email: userRecord.email || undefined,
+          })
           
           // Update last login
           await supabase
             .from('users')
+            // @ts-expect-error Supabase typing inference issue for Update payload
             .update({ last_login: new Date().toISOString() })
-            .eq('id', data.id)
+            .eq('id', userRecord.id)
         } else {
           localStorage.removeItem('access_key')
         }
@@ -69,40 +79,50 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       setLoading(true)
       
-      const { data, error } = await supabase
+      const { data: userRecordRaw, error } = await supabase
         .from('users')
         .select('*')
         .eq('access_key', accessKey)
         .eq('is_active', true)
         .single()
+      const userRecord = userRecordRaw as (Database['public']['Tables']['users']['Row'] | null)
 
-      if (error || !data) {
+      if (error || !userRecord) {
         toast.error('Invalid key, please try again')
         throw new Error('Invalid access key')
       }
 
-      setUser(data)
+      setUser({
+        id: userRecord.id,
+        access_key: userRecord.access_key,
+        name: userRecord.name,
+        role: userRecord.role,
+        phone: userRecord.phone || undefined,
+        email: userRecord.email || undefined,
+      })
       localStorage.setItem('access_key', accessKey)
       
       // Update last login
       await supabase
         .from('users')
+        // @ts-expect-error Supabase typing inference issue for Update payload
         .update({ last_login: new Date().toISOString() })
-        .eq('id', data.id)
+        .eq('id', userRecord.id)
 
       // Log activity
       await supabase
         .from('activity_logs')
+        // @ts-expect-error Supabase insert typing inference issue; payload matches schema
         .insert({
-          user_id: data.id,
+          user_id: userRecord.id,
           action: 'login',
           details: { timestamp: new Date().toISOString() }
         })
 
-      toast.success(`Welcome back, ${data.name}!`)
+      toast.success(`Welcome back, ${userRecord.name}!`)
       
       // Redirect based on role
-      if (data.role === 'admin') {
+      if (userRecord.role === 'admin') {
         router.push('/admin')
       } else {
         router.push('/driver')
@@ -121,6 +141,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // Log activity
         await supabase
           .from('activity_logs')
+          // @ts-expect-error Supabase insert typing inference issue; payload matches schema
           .insert({
             user_id: user.id,
             action: 'logout',

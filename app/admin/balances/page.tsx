@@ -137,7 +137,7 @@ export default function OutstandingBalancesPage() {
         notes: data.notes || null,
         payment_date: new Date().toISOString(),
         order_id: null,
-        processed_by: user.id
+        user_id: user.id
       })
       
       setShowPaymentModal(false)

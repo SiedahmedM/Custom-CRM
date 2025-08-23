@@ -1,5 +1,7 @@
 'use client'
 
+export const dynamic = 'force-dynamic'
+
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
@@ -25,7 +27,6 @@ export default function InventoryPage() {
   const { user, isAdmin } = useAuth()
   const [searchQuery, setSearchQuery] = useState('')
   const [filterType, setFilterType] = useState<'all' | 'low_stock' | 'out_of_stock'>('all')
-  const [selectedItem, setSelectedItem] = useState<typeof inventory[0] | null>(null)
   const [refreshing, setRefreshing] = useState(false)
 
   // Protect route
@@ -244,7 +245,6 @@ export default function InventoryPage() {
                   transition={{ delay: index * 0.05 }}
                   className="bg-white rounded-2xl p-4 shadow-sm border border-gray-200 active:scale-[0.98] transition-transform"
                   onClick={() => {
-                    setSelectedItem(item)
                     // Navigate to inventory detail page or show modal
                     console.log('View inventory item:', item.id)
                   }}

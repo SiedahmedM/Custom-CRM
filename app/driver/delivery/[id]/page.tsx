@@ -25,6 +25,7 @@ import { createClient } from '@/lib/supabase/client'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { zodResolver } from '@hookform/resolvers/zod'
+import { Database } from '@/types/database'
 
 const paymentSchema = z.object({
   order_total: z.number().min(0, 'Order total must be positive'),
@@ -65,7 +66,7 @@ export default function DeliveryCompletionPage({ params }: { params: { id: strin
   }, [])
 
   // Get order details
-  const { orders, updateOrderStatus } = useRealtimeOrders({})
+  const { orders, updateOrderStatus, updateOrder } = useRealtimeOrders({})
   const order = orders.find(o => o.id === params.id)
 
   // Get customer details with real-time balance
@@ -140,17 +141,17 @@ export default function DeliveryCompletionPage({ params }: { params: { id: strin
       })
 
       // 2. Update order with final amount and delivery details
-      await supabase
-        .from('orders')
-        .update({
+      await updateOrder.mutateAsync({
+        id: order.id,
+        updates: {
           total_amount: data.order_total,
           paid_amount: data.amount_paid,
           delivered_at: deliveryTime,
-          delivery_latitude: currentLocation?.coords.latitude || null,
-          delivery_longitude: currentLocation?.coords.longitude || null,
-          special_instructions: data.notes
-        } as Record<string, unknown>)
-        .eq('id', order.id)
+          delivery_latitude: currentLocation?.coords.latitude ?? null,
+          delivery_longitude: currentLocation?.coords.longitude ?? null,
+          special_instructions: data.notes ?? null
+        }
+      })
 
       // 3. Record payment if any was made
       if (data.amount_paid > 0) {
@@ -160,8 +161,8 @@ export default function DeliveryCompletionPage({ params }: { params: { id: strin
           amount: data.amount_paid,
           payment_method: data.payment_method,
           payment_date: deliveryTime,
-          reference_number: data.reference_number,
-          notes: data.notes,
+          reference_number: data.reference_number ?? null,
+          notes: data.notes ?? null,
           user_id: user.id
         })
       }
@@ -169,7 +170,8 @@ export default function DeliveryCompletionPage({ params }: { params: { id: strin
       // 4. Log activity for audit trail
       await supabase
         .from('activity_logs')
-        .insert({
+        // @ts-expect-error Supabase type inference issue in this file; payload matches DB schema at runtime
+        .insert<Database['public']['Tables']['activity_logs']['Insert']>({
           user_id: user.id,
           action: 'delivery_completed',
           entity_type: 'order',
@@ -185,7 +187,9 @@ export default function DeliveryCompletionPage({ params }: { params: { id: strin
               accuracy: currentLocation.coords.accuracy
             } : null,
             timestamp: deliveryTime
-          }
+          } as Database['public']['Tables']['activity_logs']['Row']['details'],
+          ip_address: null,
+          user_agent: null
         })
 
       // 5. Log completion location
@@ -194,16 +198,19 @@ export default function DeliveryCompletionPage({ params }: { params: { id: strin
       // 6. Create notification for admin
       await supabase
         .from('notifications')
-        .insert({
+        // @ts-expect-error Supabase type inference issue in this file; payload matches DB schema at runtime
+        .insert<Database['public']['Tables']['notifications']['Insert']>({
+          user_id: null,
           title: 'Delivery Completed',
           message: `${user.name} completed delivery to ${order.customer.shop_name} - $${data.amount_paid.toFixed(2)} collected`,
           type: 'delivery',
           priority: 'normal',
+          is_read: false,
           related_order_id: order.id
         })
 
       toast.success('Delivery completed successfully!', {
-        icon: '🎉',
+        icon: '��',
         duration: 5000,
       })
 

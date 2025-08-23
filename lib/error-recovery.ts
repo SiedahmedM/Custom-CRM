@@ -17,6 +17,14 @@ export class ErrorRecoveryManager {
   private isOnline = true
   private errorCounts: Map<string, number> = new Map()
 
+  private hasCode(error: unknown): error is { code?: string } {
+    return typeof error === 'object' && error !== null && 'code' in error
+  }
+
+  private hasErrorField(error: unknown): error is { error?: unknown } {
+    return typeof error === 'object' && error !== null && 'error' in error
+  }
+
   private constructor() {
     this.setupNetworkMonitoring()
     this.setupUnhandledErrorCatching()
@@ -220,13 +228,14 @@ export class ErrorRecoveryManager {
     try {
       await this.supabase
         .from('activity_logs')
+        // @ts-expect-error Supabase typing inference issue for Insert payload
         .insert({
           action: 'critical_error',
           entity_type: 'system',
           details: {
             operation_id: operationId,
-            error_message: error.message,
-            error_stack: error.stack,
+            error_message: error instanceof Error ? error.message : undefined,
+            error_stack: error instanceof Error ? error.stack : undefined,
             error_count: errorCount,
             is_critical: options.criticalError,
             timestamp: new Date().toISOString()
@@ -297,17 +306,18 @@ export class ErrorRecoveryManager {
       'disconnected'
     ]
 
-    const errorMessage = (error.message || '').toLowerCase()
+    const errorMessage = (error instanceof Error ? error.message : '').toLowerCase()
+    const errorCode = this.hasCode(error) ? error.code : undefined
     return networkErrorMessages.some(msg => errorMessage.includes(msg)) ||
-           error.code === 'NETWORK_ERROR' ||
-           error.code === 'TIMEOUT' ||
+           errorCode === 'NETWORK_ERROR' ||
+           errorCode === 'TIMEOUT' ||
            !navigator.onLine
   }
 
   private getErrorMessage(error: unknown): string {
     if (typeof error === 'string') return error
-    if (error?.message) return error.message
-    if (error?.error) return error.error
+    if (error instanceof Error && error.message) return error.message
+    if (this.hasErrorField(error) && error.error) return String(error.error)
     return 'An unexpected error occurred'
   }
 

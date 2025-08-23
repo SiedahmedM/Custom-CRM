@@ -1,5 +1,6 @@
 import React from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { Database } from '@/types/database'
 
 export interface LocationData {
   latitude: number
@@ -43,7 +44,16 @@ export class LocationTracker {
 
       const { error } = await this.supabase
         .from('driver_locations')
-        .insert(locationData as Record<string, unknown>)
+        // @ts-expect-error Supabase typing inference issue for Insert payload
+        .insert({
+          driver_id: locationData.driver_id,
+          latitude: locationData.latitude,
+          longitude: locationData.longitude,
+          accuracy: locationData.accuracy,
+          heading: locationData.heading,
+          speed: locationData.speed,
+          recorded_at: locationData.recorded_at
+        } as Database['public']['Tables']['driver_locations']['Insert'])
 
       if (error) {
         console.error('Failed to log driver location:', error)

@@ -10,6 +10,7 @@ import { z } from 'zod'
 import { createClient } from '@/lib/supabase/client'
 import { toast } from 'react-hot-toast'
 import { motion, AnimatePresence } from 'framer-motion'
+import { Database } from '@/types/database'
 
 const orderSchema = z.object({
   customer_id: z.string().min(1, 'Please select a customer'),
@@ -34,12 +35,12 @@ export default function NewOrderPage() {
   const { user } = useAuth()
   const supabase = createClient()
   
-  const [customers, setCustomers] = useState<{id: string; shop_name: string; contact_name: string}[]>([])
-  const [inventory, setInventory] = useState<{id: string; part_number: string; description: string; selling_price: number}[]>([])
+  const [customers, setCustomers] = useState<{id: string; shop_name: string; contact_name: string; address: string; phone: string; current_balance: number}[]>([])
+  const [inventory, setInventory] = useState<{id: string; part_number: string; description: string; selling_price: number; current_quantity: number; reorder_threshold: number | null}[]>([])
   const [searchQuery, setSearchQuery] = useState('')
   const [partSearchQuery, setPartSearchQuery] = useState('')
-  const [selectedCustomer, setSelectedCustomer] = useState<{id: string; shop_name: string; contact_name: string} | null>(null)
-  const [selectedItems, setSelectedItems] = useState<{id: string; part_number: string; description: string; selling_price: number; quantity: number}[]>([])
+  const [selectedCustomer, setSelectedCustomer] = useState<{id: string; shop_name: string; contact_name: string; address?: string; phone?: string; current_balance: number} | null>(null)
+  const [selectedItems, setSelectedItems] = useState<{ inventory_id: string; part: { id: string; part_number: string; description: string; selling_price: number; current_quantity: number }; quantity: number; unit_price: number }[]>([])
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [showCustomerSearch, setShowCustomerSearch] = useState(false)
   const [showPartSearch, setShowPartSearch] = useState(false)
@@ -59,27 +60,6 @@ export default function NewOrderPage() {
   })
 
   const canDeliver = watch('can_deliver')
-
-  // Prevent iOS keyboard issues
-  useEffect(() => {
-    const preventZoom = (e: TouchEvent) => {
-      if (e.touches.length > 1) {
-        e.preventDefault()
-      }
-    }
-    
-    document.addEventListener('touchstart', preventZoom, { passive: false })
-    
-    return () => {
-      document.removeEventListener('touchstart', preventZoom)
-    }
-  }, [])
-
-  // Load customers and inventory
-  useEffect(() => {
-    loadCustomers()
-    loadInventory()
-  }, [loadCustomers, loadInventory])
 
   const loadCustomers = useCallback(async () => {
     const { data } = await supabase
@@ -102,6 +82,13 @@ export default function NewOrderPage() {
     if (data) setInventory(data)
   }, [supabase])
 
+  // Load customers and inventory once on mount
+  useEffect(() => {
+    loadCustomers()
+    loadInventory()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   const filteredCustomers = customers.filter(c => 
     c.shop_name.toLowerCase().includes(searchQuery.toLowerCase())
   )
@@ -111,7 +98,7 @@ export default function NewOrderPage() {
     p.description.toLowerCase().includes(partSearchQuery.toLowerCase())
   )
 
-  const selectCustomer = (customer: {id: string; shop_name: string; contact_name: string; address: string; phone: string}) => {
+  const selectCustomer = (customer: {id: string; shop_name: string; contact_name: string; address: string; phone: string; current_balance: number}) => {
     setSelectedCustomer(customer)
     setValue('customer_id', customer.id)
     setValue('delivery_address', customer.address)
@@ -121,7 +108,7 @@ export default function NewOrderPage() {
     setSearchQuery('')
   }
 
-  const addItem = (part: {id: string; part_number: string; description: string; selling_price: number}) => {
+  const addItem = (part: {id: string; part_number: string; description: string; selling_price: number; current_quantity: number}) => {
     const existingItem = selectedItems.find(i => i.inventory_id === part.id)
     
     if (existingItem) {
@@ -138,7 +125,7 @@ export default function NewOrderPage() {
 
     const updatedItems = [...selectedItems, newItem]
     setSelectedItems(updatedItems)
-    setValue('items', updatedItems.map(({ ...item }) => item))
+    setValue('items', updatedItems.map(({ inventory_id, quantity, unit_price }) => ({ inventory_id, quantity, unit_price })))
     setShowPartSearch(false)
     setPartSearchQuery('')
     
@@ -160,13 +147,13 @@ export default function NewOrderPage() {
     const updatedItems = [...selectedItems]
     updatedItems[index].quantity = quantity
     setSelectedItems(updatedItems)
-    setValue('items', updatedItems.map(({ ...item }) => item))
+    setValue('items', updatedItems.map(({ inventory_id, quantity, unit_price }) => ({ inventory_id, quantity, unit_price })))
   }
 
   const removeItem = (index: number) => {
     const updatedItems = selectedItems.filter((_, i) => i !== index)
     setSelectedItems(updatedItems)
-    setValue('items', updatedItems.map(({ ...item }) => item))
+    setValue('items', updatedItems.map(({ inventory_id, quantity, unit_price }) => ({ inventory_id, quantity, unit_price })))
   }
 
   const calculateTotal = () => {
@@ -182,34 +169,47 @@ export default function NewOrderPage() {
     
     try {
       // Create order
-      const orderData = {
+      const orderData: Database['public']['Tables']['orders']['Insert'] = {
         customer_id: data.customer_id,
         driver_id: data.can_deliver === 'no' ? null : user.id,
-        status: data.can_deliver === 'no' ? 'needs_reassignment' : 'assigned',
-        delivery_address: data.delivery_address,
-        delivery_date: data.delivery_date,
-        special_instructions: data.special_instructions,
-        reassignment_reason: data.reassignment_reason,
-        total_amount: calculateTotal()
+        status: (data.can_deliver === 'no' ? 'needs_reassignment' : 'assigned') as Database['public']['Tables']['orders']['Row']['status'],
+        order_date: new Date().toISOString(),
+        delivery_address: data.delivery_address || null,
+        delivery_date: data.delivery_date || null,
+        special_instructions: data.special_instructions || null,
+        reassignment_reason: data.reassignment_reason || null,
+        total_amount: calculateTotal(),
+        paid_amount: 0,
+        delivery_started_at: null,
+        delivered_at: null,
+        delivery_latitude: null,
+        delivery_longitude: null
       }
 
       const { data: order, error: orderError } = await supabase
         .from('orders')
-        .insert(orderData)
+        // @ts-expect-error Supabase types inference issue; payload matches Insert
+        .insert<Database['public']['Tables']['orders']['Insert']>(orderData)
         .select()
         .single()
 
       if (orderError) throw orderError
 
+      type OrderRow = Database['public']['Tables']['orders']['Row']
+      const createdOrder = order as OrderRow
+
       // Add order items
-      const itemsData = data.items.map(item => ({
-        order_id: order.id,
-        ...item
+      const itemsData: Database['public']['Tables']['order_items']['Insert'][] = data.items.map(item => ({
+        order_id: createdOrder.id,
+        inventory_id: item.inventory_id,
+        quantity: item.quantity,
+        unit_price: item.unit_price
       }))
 
       const { error: itemsError } = await supabase
         .from('order_items')
-        .insert(itemsData)
+        // @ts-expect-error Supabase types inference issue; payload matches Insert[]
+        .insert<Database['public']['Tables']['order_items']['Insert']>(itemsData)
 
       if (itemsError) throw itemsError
 
@@ -217,12 +217,15 @@ export default function NewOrderPage() {
       if (data.can_deliver === 'no') {
         await supabase
           .from('notifications')
-          .insert({
+          // @ts-expect-error Supabase types inference issue; payload matches Insert
+          .insert<Database['public']['Tables']['notifications']['Insert']>({
             title: 'Order Needs Reassignment',
-            message: `Order ${order.order_number} needs reassignment: ${data.reassignment_reason || 'No reason provided'}`,
+            message: `Order ${createdOrder.order_number} needs reassignment: ${data.reassignment_reason || 'No reason provided'}`,
             type: 'order',
             priority: 'urgent',
-            related_order_id: order.id
+            related_order_id: createdOrder.id,
+            is_read: false,
+            user_id: null
           })
       }
 
@@ -648,7 +651,7 @@ export default function NewOrderPage() {
                           ${part.selling_price.toFixed(2)} • {part.current_quantity} available
                         </p>
                       </div>
-                      {part.current_quantity < part.reorder_threshold && (
+                      {(part.reorder_threshold ?? 0) > 0 && part.current_quantity < (part.reorder_threshold ?? 0) && (
                         <div className="ml-3">
                           <span className="text-[11px] font-medium text-orange-600 bg-orange-50 px-2 py-1 rounded-full">
                             Low Stock

@@ -45,6 +45,14 @@ export function useRealtimeCustomers(filters?: {
   const queryClient = useQueryClient()
   const [connectionStatus, setConnectionStatus] = useState(true)
 
+  // Helper to check if customer matches current filters
+  const matchesFilters = (customer: CustomerWithDetails): boolean => {
+    if (filters?.outstanding_only && customer.current_balance <= 0) return false
+    if (filters?.search_query && !customer.shop_name.toLowerCase().includes(filters.search_query.toLowerCase())) return false
+    if (filters?.assigned_driver_id && customer.assigned_driver_id !== filters.assigned_driver_id) return false
+    return true
+  }
+
   // Build query
   const buildQuery = useCallback(() => {
     let query = supabase
@@ -81,23 +89,24 @@ export function useRealtimeCustomers(filters?: {
       if (error) throw error
       
       // Enhance data with calculations
-      const enhancedData: CustomerWithDetails[] = (data || []).map(customer => {
-        const recentOrders = customer.recent_orders?.slice(0, 5) || []
-        const recentPayments = customer.recent_payments?.slice(0, 5) || []
+      const rows = (data || []) as any[]
+      const enhancedData: CustomerWithDetails[] = rows.map((customer: any) => {
+        const recentOrders = (customer.recent_orders || []).slice(0, 5) as any[]
+        const recentPayments = (customer.recent_payments || []).slice(0, 5) as any[]
         
         const lastOrderDate = recentOrders.length > 0 
-          ? recentOrders.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0].created_at
+          ? recentOrders.sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0].created_at
           : null
           
         const lastPaymentDate = recentPayments.length > 0
-          ? recentPayments.sort((a, b) => new Date(b.payment_date).getTime() - new Date(a.payment_date).getTime())[0].payment_date
+          ? recentPayments.sort((a: any, b: any) => new Date(b.payment_date).getTime() - new Date(a.payment_date).getTime())[0].payment_date
           : null
 
         const daysOutstanding = customer.current_balance > 0 && lastOrderDate
           ? Math.floor((Date.now() - new Date(lastOrderDate).getTime()) / (1000 * 60 * 60 * 24))
           : 0
 
-        const totalRevenue = recentOrders.reduce((sum, order) => sum + order.total_amount, 0)
+        const totalRevenue = recentOrders.reduce((sum: number, order: any) => sum + order.total_amount, 0)
 
         return {
           ...customer,
@@ -120,7 +129,7 @@ export function useRealtimeCustomers(filters?: {
   useEffect(() => {
     const customersChannel = realtimeManager.subscribe({
       table: 'customers',
-      callback: (payload) => {
+      callback: (payload: any) => {
         queryClient.setQueryData(['customers', filters], (old: CustomerWithDetails[] | undefined) => {
           if (!old) return old
 
@@ -195,7 +204,7 @@ export function useRealtimeCustomers(filters?: {
   useEffect(() => {
     const paymentsChannel = realtimeManager.subscribe({
       table: 'payments',
-      callback: (payload) => {
+      callback: (payload: any) => {
         queryClient.setQueryData(['customers', filters], (old: CustomerWithDetails[] | undefined) => {
           if (!old) return old
 
@@ -236,41 +245,33 @@ export function useRealtimeCustomers(filters?: {
     }
   }, [filters, queryClient])
 
-  // Helper to check if customer matches current filters
-  const matchesFilters = (customer: CustomerWithDetails): boolean => {
-    if (filters?.outstanding_only && customer.current_balance <= 0) return false
-    if (filters?.search_query && !customer.shop_name.toLowerCase().includes(filters.search_query.toLowerCase())) return false
-    if (filters?.assigned_driver_id && customer.assigned_driver_id !== filters.assigned_driver_id) return false
-    return true
-  }
-
   // Add new customer
-  const addCustomer = useMutation({
+  const addCustomer = useMutation<Customer, unknown, CustomerInsert>({
     mutationFn: async (newCustomer: CustomerInsert) => {
       const { data, error } = await supabase
         .from('customers')
-        .insert(newCustomer)
+        .insert(newCustomer as never)
         .select()
         .single()
 
       if (error) throw error
-      return data
+      return data as Customer
     },
     onSuccess: () => {
       toast.success('Customer added successfully!')
       refetch()
     },
     onError: (error: unknown) => {
-      toast.error('Failed to add customer: ' + error.message)
+      toast.error('Failed to add customer: ' + (error as any)?.message)
     },
   })
 
   // Update customer
-  const updateCustomer = useMutation({
+  const updateCustomer = useMutation<void, unknown, { id: string; updates: CustomerUpdate }>({
     mutationFn: async ({ id, updates }: { id: string; updates: CustomerUpdate }) => {
       const { error } = await supabase
         .from('customers')
-        .update(updates)
+        .update(updates as never)
         .eq('id', id)
 
       if (error) throw error
@@ -279,26 +280,26 @@ export function useRealtimeCustomers(filters?: {
       toast.success('Customer updated successfully!')
     },
     onError: (error: unknown) => {
-      toast.error('Failed to update customer: ' + error.message)
+      toast.error('Failed to update customer: ' + (error as any)?.message)
     },
   })
 
   // Add payment (which will trigger balance recalculation via database triggers)
-  const addPayment = useMutation({
-    mutationFn: async (payment: PaymentInsert & { user_id?: string }) => {
+  const addPayment = useMutation<Database['public']['Tables']['payments']['Row'], unknown, Omit<PaymentInsert, 'processed_by'> & { user_id?: string }>({
+    mutationFn: async (payment) => {
       const { data, error } = await supabase
         .from('payments')
         .insert({
           ...payment,
-          processed_by: payment.user_id
-        })
+          processed_by: payment.user_id ?? null
+        } as never)
         .select()
         .single()
 
       if (error) throw error
-      return data
+      return data as Database['public']['Tables']['payments']['Row']
     },
-    onMutate: async (payment) => {
+    onMutate: async (payment: Omit<PaymentInsert, 'processed_by'> & { user_id?: string }) => {
       // Haptic feedback
       if (window.navigator.vibrate) {
         window.navigator.vibrate(10)
@@ -327,7 +328,7 @@ export function useRealtimeCustomers(filters?: {
         })
       })
     },
-    onSuccess: (data, variables) => {
+    onSuccess: (_data, variables) => {
       toast.success(`Payment of $${variables.amount.toFixed(2)} recorded!`, {
         icon: '💰',
         duration: 4000,
@@ -337,7 +338,7 @@ export function useRealtimeCustomers(filters?: {
       setTimeout(() => refetch(), 1000)
     },
     onError: (error: unknown, _variables: unknown) => {
-      toast.error('Failed to record payment: ' + error.message)
+      toast.error('Failed to record payment: ' + (error as any)?.message)
       // Revert optimistic update
       refetch()
     },
@@ -360,7 +361,7 @@ export function useRealtimeCustomers(filters?: {
             type: 'payment',
             priority: 'normal',
             related_order_id: null
-          })
+          } as never)
 
         if (error) throw error
       } else {
@@ -375,7 +376,7 @@ export function useRealtimeCustomers(filters?: {
       })
     },
     onError: (error: unknown) => {
-      toast.error('Failed to send reminder: ' + error.message)
+      toast.error('Failed to send reminder: ' + (error as any)?.message)
     },
   })
 
