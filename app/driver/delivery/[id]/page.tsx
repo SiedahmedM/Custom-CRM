@@ -19,6 +19,7 @@ import {
   Navigation
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
+import { logDriverLocation } from '@/lib/location-tracking'
 import { toast } from 'react-hot-toast'
 import { createClient } from '@/lib/supabase/client'
 import { useForm } from 'react-hook-form'
@@ -107,17 +108,8 @@ export default function DeliveryCompletionPage({ params }: { params: { id: strin
         status: 'out_for_delivery'
       })
 
-      // Log arrival with GPS coordinates (driver_locations table needed in schema)
-      if (currentLocation) {
-        // TODO: Create driver_locations table in database schema
-        console.log('Driver location:', {
-          driver_id: user.id,
-          latitude: currentLocation.coords.latitude,
-          longitude: currentLocation.coords.longitude,
-          accuracy: currentLocation.coords.accuracy,
-          recorded_at: new Date().toISOString()
-        })
-      }
+      // Log arrival with GPS coordinates
+      await logDriverLocation(user.id, 'arrival_at_customer')
 
       setDeliveryStarted(true)
       toast.success('Arrival logged with GPS coordinates')
@@ -196,7 +188,10 @@ export default function DeliveryCompletionPage({ params }: { params: { id: strin
           }
         })
 
-      // 5. Create notification for admin
+      // 5. Log completion location
+      await logDriverLocation(user.id, 'delivery_completed')
+
+      // 6. Create notification for admin
       await supabase
         .from('notifications')
         .insert({
