@@ -137,8 +137,8 @@ export default function AdminDashboard() {
         .eq('is_active', true)
 
       const todayOrders = (timeFrameOrders || []).filter((o: {created_at: string}) => isToday(new Date(o.created_at)))
-      const pendingOrders = orders.filter(o => o.status === 'pending' || o.status === 'needs_reassignment') || []
-      const activeDeliveries = orders.filter(o => o.status === 'out_for_delivery') || []
+      const pendingOrders = (timeFrameOrders || []).filter((o: {status: string}) => o.status === 'pending' || o.status === 'needs_reassignment')
+      const activeDeliveries = (timeFrameOrders || []).filter((o: {status: string}) => o.status === 'out_for_delivery')
       const deliveredOrders = (timeFrameOrders || []).filter((o: {status: string}) => o.status === 'delivered')
       
       const outstandingBalance = (customers || []).reduce((sum, c: {current_balance: number}) => sum + c.current_balance, 0)
@@ -191,15 +191,22 @@ export default function AdminDashboard() {
     refetchInterval: 30000,
   })
 
+  // Refetch stats when orders change
+  useEffect(() => {
+    refetchStats()
+  }, [orders?.length, refetchStats])
+
   // Filter orders for display
   const urgentOrders = orders.filter(o => 
     o.status === 'needs_reassignment' || 
     (o.customer?.current_balance > 0 && o.status === 'pending')
   )
 
+  // Show orders from last 12 hours
+  const twelveHoursAgo = new Date(Date.now() - 12 * 60 * 60 * 1000)
   const recentOrders = orders
-    .filter(o => isToday(new Date(o.created_at)))
-    .slice(0, 5)
+    .filter(o => new Date(o.created_at) >= twelveHoursAgo)
+    .slice(0, 10)
 
   const handleRefresh = async () => {
     setRefreshing(true)

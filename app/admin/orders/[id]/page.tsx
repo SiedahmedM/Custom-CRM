@@ -38,6 +38,12 @@ export default function AdminOrderDetailPage({ params }: { params: { id: string 
             <p className="text-[16px] font-semibold">{order.customer?.shop_name || '-'}</p>
           </div>
           <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-200">
+            <p className="text-[13px] text-gray-500">Assigned Driver</p>
+            <p className="text-[16px] font-semibold">
+              {order.driver?.name || (order.status === 'needs_reassignment' ? 'Needs Reassignment' : 'Unassigned')}
+            </p>
+          </div>
+          <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-200">
             <p className="text-[13px] text-gray-500">Status</p>
             <p className="text-[16px] font-semibold capitalize">{order.status.replace('_',' ')}</p>
           </div>

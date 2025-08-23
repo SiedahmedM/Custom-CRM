@@ -55,22 +55,39 @@ export default function DriverDashboard() {
     }
   }, [])
 
-  // Get driver's orders with real-time updates
+  // Get driver's orders with real-time updates (both assigned to them and created by them)
   const { 
-    orders, 
+    orders: allOrders, 
     updateOrderStatus 
   } = useRealtimeOrders({
-    driver_id: user?.id,
     date_range: {
       start: new Date(new Date().setHours(0, 0, 0, 0)),
       end: new Date(new Date().setHours(23, 59, 59, 999))
     }
   })
 
-  // Filter orders by status
-  const pendingOrders = orders.filter(o => o.status === 'assigned')
-  const inProgressOrders = orders.filter(o => o.status === 'out_for_delivery')
-  const completedOrders = orders.filter(o => o.status === 'delivered')
+  // Filter to show orders relevant to this driver
+  const orders = allOrders.filter(order => 
+    // Orders assigned to this driver
+    order.driver_id === user?.id ||
+    // Orders that need reassignment (could be picked up by this driver)
+    order.status === 'needs_reassignment' ||
+    // Orders created today that are pending (for visibility)
+    order.status === 'pending'
+  )
+
+  // Filter orders by status for this driver
+  const pendingOrders = orders.filter(o => 
+    (o.status === 'assigned' && o.driver_id === user?.id) ||
+    o.status === 'pending' ||
+    o.status === 'needs_reassignment'
+  )
+  const inProgressOrders = orders.filter(o => 
+    o.status === 'out_for_delivery' && o.driver_id === user?.id
+  )
+  const completedOrders = orders.filter(o => 
+    o.status === 'delivered' && o.driver_id === user?.id
+  )
 
   // Calculate today's stats
   const todayStats = {
@@ -138,8 +155,11 @@ export default function DriverDashboard() {
         </div>
       </header>
 
-      {/* iOS-style Stats Cards */}
-      <div className="px-5 py-4">
+      {/* Main Content - Show different views based on active tab */}
+      {activeTab === 'home' && (
+        <>
+          {/* iOS-style Stats Cards */}
+          <div className="px-5 py-4">
         <div className="grid grid-cols-2 gap-3">
           <motion.div 
             initial={{ opacity: 0, scale: 0.95 }}
@@ -357,6 +377,177 @@ export default function DriverDashboard() {
           </div>
         )}
       </div>
+        </>
+      )}
+
+      {/* Orders Tab */}
+      {activeTab === 'orders' && (
+        <div className="px-5 py-4">
+          <h2 className="text-[20px] font-semibold text-gray-900 mb-4">My Orders</h2>
+          
+          {pendingOrders.length > 0 && (
+            <div className="mb-6">
+              <h3 className="text-[15px] font-semibold text-gray-700 mb-3">Pending Orders</h3>
+              <div className="space-y-3">
+                {pendingOrders.map((order, index) => (
+                  <motion.div
+                    key={order.id}
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: index * 0.1 }}
+                    className="bg-white rounded-2xl p-4 shadow-sm border border-gray-200"
+                  >
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1">
+                        <p className="font-semibold text-[15px] text-gray-900">
+                          {order.customer.shop_name}
+                        </p>
+                        <p className="text-[13px] text-gray-600 mt-0.5">
+                          {order.order_number} • ${order.total_amount.toFixed(2)}
+                        </p>
+                        <p className="text-[11px] text-gray-500 mt-1">
+                          {format(new Date(order.created_at), 'MMM d, h:mm a')}
+                        </p>
+                      </div>
+                      <ChevronRight className="w-5 h-5 text-gray-400" />
+                    </div>
+                  </motion.div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {inProgressOrders.length > 0 && (
+            <div className="mb-6">
+              <h3 className="text-[15px] font-semibold text-gray-700 mb-3">Active Deliveries</h3>
+              <div className="space-y-3">
+                {inProgressOrders.map((order, index) => (
+                  <motion.div
+                    key={order.id}
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: index * 0.1 }}
+                    className="bg-white rounded-2xl p-4 shadow-sm border border-gray-200"
+                    onClick={() => router.push(`/driver/delivery/${order.id}`)}
+                  >
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1">
+                        <p className="font-semibold text-[15px] text-gray-900">
+                          {order.customer.shop_name}
+                        </p>
+                        <p className="text-[13px] text-gray-600 mt-0.5">
+                          {order.order_number} • ${order.total_amount.toFixed(2)}
+                        </p>
+                        <p className="text-[11px] text-green-600 mt-1 font-medium">
+                          In Progress
+                        </p>
+                      </div>
+                      <ChevronRight className="w-5 h-5 text-gray-400" />
+                    </div>
+                  </motion.div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {completedOrders.length > 0 && (
+            <div className="mb-6">
+              <h3 className="text-[15px] font-semibold text-gray-700 mb-3">Completed Today</h3>
+              <div className="space-y-3">
+                {completedOrders.slice(0, 5).map((order, index) => (
+                  <motion.div
+                    key={order.id}
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: index * 0.1 }}
+                    className="bg-white rounded-2xl p-4 shadow-sm border border-gray-200 opacity-75"
+                  >
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1">
+                        <p className="font-semibold text-[15px] text-gray-900">
+                          {order.customer.shop_name}
+                        </p>
+                        <p className="text-[13px] text-gray-600 mt-0.5">
+                          {order.order_number} • ${order.total_amount.toFixed(2)}
+                        </p>
+                        <p className="text-[11px] text-green-600 mt-1 font-medium">
+                          ✓ Completed
+                        </p>
+                      </div>
+                    </div>
+                  </motion.div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {orders.length === 0 && (
+            <div className="text-center py-12">
+              <ClipboardList className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+              <h3 className="text-[17px] font-semibold text-gray-900 mb-2">
+                No orders found
+              </h3>
+              <p className="text-[15px] text-gray-500">
+                Orders will appear here when assigned to you
+              </p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Inventory Tab */}
+      {activeTab === 'inventory' && (
+        <div className="px-5 py-4">
+          <h2 className="text-[20px] font-semibold text-gray-900 mb-4">Inventory Status</h2>
+          <div className="text-center py-12">
+            <Box className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+            <h3 className="text-[17px] font-semibold text-gray-900 mb-2">
+              Coming Soon
+            </h3>
+            <p className="text-[15px] text-gray-500">
+              Inventory management for drivers will be available soon
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Profile Tab */}
+      {activeTab === 'profile' && (
+        <div className="px-5 py-4">
+          <h2 className="text-[20px] font-semibold text-gray-900 mb-4">Profile</h2>
+          
+          <div className="space-y-3">
+            <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-200">
+              <p className="text-[13px] text-gray-500 mb-1">Name</p>
+              <p className="text-[16px] font-semibold text-gray-900">{user?.name}</p>
+            </div>
+            
+            <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-200">
+              <p className="text-[13px] text-gray-500 mb-1">Role</p>
+              <p className="text-[16px] font-semibold text-gray-900 capitalize">{user?.role}</p>
+            </div>
+            
+            <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-200">
+              <p className="text-[13px] text-gray-500 mb-1">Access Key</p>
+              <p className="text-[16px] font-mono text-gray-900">{user?.access_key}</p>
+            </div>
+
+            <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-200">
+              <p className="text-[13px] text-gray-500 mb-1">Today&apos;s Performance</p>
+              <div className="grid grid-cols-2 gap-4 mt-2">
+                <div>
+                  <p className="text-[20px] font-bold text-blue-600">{todayStats.totalDeliveries}</p>
+                  <p className="text-[11px] text-gray-500">Deliveries</p>
+                </div>
+                <div>
+                  <p className="text-[20px] font-bold text-green-600">${todayStats.revenue.toFixed(0)}</p>
+                  <p className="text-[11px] text-gray-500">Revenue</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* iOS-style Floating Action Button */}
       <button
@@ -381,10 +572,7 @@ export default function DriverDashboard() {
             <span className="text-[10px] mt-1 font-medium">Home</span>
           </button>
           <button
-            onClick={() => {
-              setActiveTab('orders')
-              router.push('/driver/orders')
-            }}
+            onClick={() => setActiveTab('orders')}
             className={`flex flex-col items-center py-2 pt-2.5 active:scale-95 transition-transform ${
               activeTab === 'orders' ? 'text-blue-600' : 'text-gray-400'
             }`}
@@ -393,10 +581,7 @@ export default function DriverDashboard() {
             <span className="text-[10px] mt-1 font-medium">Orders</span>
           </button>
           <button
-            onClick={() => {
-              setActiveTab('inventory')
-              router.push('/driver/inventory')
-            }}
+            onClick={() => setActiveTab('inventory')}
             className={`flex flex-col items-center py-2 pt-2.5 active:scale-95 transition-transform ${
               activeTab === 'inventory' ? 'text-blue-600' : 'text-gray-400'
             }`}
@@ -405,10 +590,7 @@ export default function DriverDashboard() {
             <span className="text-[10px] mt-1 font-medium">Inventory</span>
           </button>
           <button
-            onClick={() => {
-              setActiveTab('profile')
-              router.push('/driver/profile')
-            }}
+            onClick={() => setActiveTab('profile')}
             className={`flex flex-col items-center py-2 pt-2.5 active:scale-95 transition-transform ${
               activeTab === 'profile' ? 'text-blue-600' : 'text-gray-400'
             }`}
