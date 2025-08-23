@@ -136,16 +136,16 @@ export default function AdminDashboard() {
         .eq('role', 'driver')
         .eq('is_active', true)
 
-      const todayOrders = timeFrameOrders?.filter(o => isToday(new Date(o.created_at))) || []
+      const todayOrders = (timeFrameOrders || []).filter((o: {created_at: string}) => isToday(new Date(o.created_at)))
       const pendingOrders = orders.filter(o => o.status === 'pending' || o.status === 'needs_reassignment') || []
       const activeDeliveries = orders.filter(o => o.status === 'out_for_delivery') || []
-      const deliveredOrders = timeFrameOrders?.filter(o => o.status === 'delivered') || []
+      const deliveredOrders = (timeFrameOrders || []).filter((o: {status: string}) => o.status === 'delivered')
       
-      const outstandingBalance = customers?.reduce((sum, c) => sum + c.current_balance, 0) || 0
-      const todayRevenue = deliveredOrders.reduce((sum, o) => sum + o.total_amount, 0)
+      const outstandingBalance = (customers || []).reduce((sum, c: {current_balance: number}) => sum + c.current_balance, 0)
+      const todayRevenue = deliveredOrders.reduce((sum, o: {total_amount: number}) => sum + o.total_amount, 0)
 
       // Calculate driver performance
-      const driverPerformance = drivers?.map(driver => {
+      const driverPerformance = (drivers || []).map((driver: {id: string; name: string; last_login?: string; created_at: string; orders?: {status: string; total_amount: number; created_at: string}[]; pitches?: {interest_level: string; created_at: string}[]}) => {
         const driverOrders = driver.orders?.filter(o => 
           selectedTimeFrame === 'today' ? isToday(new Date(o.created_at)) :
           selectedTimeFrame === 'week' ? isThisWeek(new Date(o.created_at)) :
@@ -217,23 +217,6 @@ export default function AdminDashboard() {
     toast.success('Dashboard refreshed')
   }
 
-  const _handleReassignOrder = async (orderId: string, driverId: string) => {
-    try {
-      await updateOrderStatus.mutateAsync({
-        id: orderId,
-        status: 'assigned',
-      })
-      
-      await supabase
-        .from('orders')
-        .update({ driver_id: driverId })
-        .eq('id', orderId)
-        
-      toast.success('Order reassigned successfully')
-    } catch (error) {
-      toast.error('Failed to reassign order')
-    }
-  }
 
   if (!user) return null
 
