@@ -23,13 +23,10 @@ import {
 import { useRealtimeOrders } from '@/hooks/useRealtimeOrders'
 import { format } from 'date-fns'
 import { motion, AnimatePresence } from 'framer-motion'
-import { toast } from 'react-hot-toast'
-
 export default function DriverDashboard() {
-  const { user, isDriver, logout } = useAuth()
+  const { user, isDriver } = useAuth()
   const router = useRouter()
   const [activeTab, setActiveTab] = useState('home')
-  const [showNewOrderForm, setShowNewOrderForm] = useState(false)
 
   // Protect route
   useEffect(() => {
@@ -61,7 +58,6 @@ export default function DriverDashboard() {
   // Get driver's orders with real-time updates
   const { 
     orders, 
-    isLoading, 
     updateOrderStatus 
   } = useRealtimeOrders({
     driver_id: user?.id,

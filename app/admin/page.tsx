@@ -15,7 +15,8 @@ import {
   CheckCircle,
   XCircle,
   AlertCircle,
-  ChevronRight
+  ChevronRight,
+  Archive
 } from 'lucide-react'
 import { useRealtimeOrders } from '@/hooks/useRealtimeOrders'
 import { format, isToday, isThisWeek, isThisMonth } from 'date-fns'
@@ -77,12 +78,11 @@ export default function AdminDashboard() {
   // Get real-time orders
   const { 
     orders, 
-    updateOrderStatus,
     refetch: refetchOrders
   } = useRealtimeOrders()
 
   // Get dashboard stats
-  const { data: stats, isLoading: statsLoading, refetch: refetchStats } = useQuery({
+  const { data: stats, refetch: refetchStats } = useQuery({
     queryKey: ['dashboard-stats', selectedTimeFrame],
     queryFn: async (): Promise<DashboardStats> => {
       const now = new Date()
@@ -367,6 +367,31 @@ export default function AdminDashboard() {
             </div>
           </motion.div>
         </div>
+
+        {/* Inventory Quick Access */}
+        <motion.div 
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ delay: 0.2 }}
+          className="bg-white rounded-2xl p-4 shadow-sm border border-gray-200 active:scale-[0.98] transition-transform mt-3"
+          onClick={() => router.push('/admin/inventory')}
+        >
+          <div className="flex items-center justify-between">
+            <div className="flex-1">
+              <p className="text-[11px] font-medium text-gray-500 uppercase tracking-wide">Inventory</p>
+              <p className="text-[24px] font-bold text-gray-900 leading-tight mt-1">
+                {stats?.lowStockItems || 0}
+              </p>
+              <p className="text-[11px] text-gray-500 mt-1">
+                Items need restocking
+              </p>
+            </div>
+            <div className="w-10 h-10 bg-orange-50 rounded-xl flex items-center justify-center">
+              <Archive className="w-5 h-5 text-orange-600" />
+            </div>
+            <ChevronRight className="w-5 h-5 text-gray-400 ml-3" />
+          </div>
+        </motion.div>
       </div>
 
       {/* Urgent Alerts */}
