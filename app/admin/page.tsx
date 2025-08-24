@@ -303,6 +303,12 @@ export default function AdminDashboard() {
                 <RefreshCw className={`w-[20px] h-[20px] text-gray-600 ${refreshing ? 'animate-spin' : ''}`} />
               </button>
               <button
+                onClick={() => router.push('/admin/reports')}
+                className="px-3 py-1.5 bg-gray-100 rounded-lg text-[13px] font-medium active:bg-gray-200"
+              >
+                Reports
+              </button>
+              <button
                 onClick={logout}
                 className="p-2 active:scale-95 transition-transform"
               >
