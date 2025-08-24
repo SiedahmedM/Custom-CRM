@@ -1,11 +1,10 @@
-/* eslint-disable */
-// @ts-nocheck
 import { useEffect, useState, useCallback } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { createClient } from '@/lib/supabase/client'
 import { realtimeManager } from '@/lib/supabase/realtime'
 import { toast } from 'react-hot-toast'
 import { Database } from '@/types/database'
+import { RealtimePostgresChangesPayload } from '@supabase/supabase-js'
 
 type Order = Database['public']['Tables']['orders']['Row']
 type OrderInsert = Database['public']['Tables']['orders']['Insert']
@@ -77,39 +76,95 @@ export function useRealtimeOrders(filters?: {
     refetchInterval: connectionStatus ? 30000 : false,
   })
 
+  // Helper to check if order matches current filters
+  const matchesFilters = useCallback(
+    (order: Partial<Order>): boolean => {
+      if (filters?.status && order.status !== filters.status) return false
+      if (filters?.driver_id && order.driver_id !== filters.driver_id) return false
+      if (filters?.customer_id && order.customer_id !== filters.customer_id) return false
+      if (filters?.date_range && order.order_date) {
+        const orderDate = new Date(order.order_date)
+        if (orderDate < filters.date_range.start || orderDate > filters.date_range.end) {
+          return false
+        }
+      }
+      return true
+    },
+    [filters]
+  )
+
+  // Fetch full order details
+  const fetchOrderDetails = useCallback(
+    async (orderId: string): Promise<OrderWithDetails | null> => {
+      const { data, error } = await supabase
+        .from('orders')
+        .select(`
+          *,
+          customer:customers(*),
+          driver:users(*),
+          items:order_items(
+            *,
+            inventory(*)
+          )
+        `)
+        .eq('id', orderId)
+        .single()
+
+      if (error) {
+        console.error('Error fetching order details:', error)
+        return null
+      }
+
+      return data as OrderWithDetails
+    },
+    [supabase]
+  )
+
   // Set up real-time subscription
   useEffect(() => {
     const channel = realtimeManager.subscribe({
       table: 'orders',
-      callback: (payload: any) => {
+      callback: (payload) => {
+        const typedPayload = payload as RealtimePostgresChangesPayload<Order>
         // Optimistically update the cache
-        queryClient.setQueryData(['orders', filters], (old: OrderWithDetails[] | undefined) => {
-          if (!old) return old
+        queryClient.setQueryData(
+          ['orders', filters],
+          (old: OrderWithDetails[] | undefined) => {
+            if (!old) return old
 
-          switch (payload.eventType) {
-            case 'INSERT':
-              // Insert immediate lightweight placeholder for snappy UI, then hydrate
-              const placeholder: Partial<OrderWithDetails> = {
-                id: payload.new.id,
-                order_number: payload.new.order_number || 'NEW...',
-                customer: old[0]?.customer || ({} as any),
-                total_amount: payload.new.total_amount || 0,
-                status: payload.new.status,
-                created_at: payload.new.created_at,
-              }
-              let next = old
-              if (matchesFilters(payload.new as Order)) {
-                next = [placeholder as OrderWithDetails, ...old]
-              }
-              // Fire and forget: hydrate with full details
-              fetchOrderDetails(payload.new.id).then(newOrder => {
-                if (!newOrder) return
-                queryClient.setQueryData(['orders', filters], (curr: OrderWithDetails[] | undefined) => {
-                  if (!curr) return curr
-                  const withoutTemp = curr.filter(o => o.id !== payload.new.id)
-                  return matchesFilters(newOrder) ? [newOrder, ...withoutTemp] : withoutTemp
+            switch (typedPayload.eventType) {
+              case 'INSERT':
+                // Insert immediate lightweight placeholder for snappy UI, then hydrate
+                const placeholder: Partial<OrderWithDetails> = {
+                  id: typedPayload.new.id,
+                  order_number: typedPayload.new.order_number || 'NEW...',
+                  customer:
+                    old[0]?.customer ||
+                    ({} as Database['public']['Tables']['customers']['Row']),
+                  total_amount: typedPayload.new.total_amount || 0,
+                  status: typedPayload.new.status,
+                  created_at: typedPayload.new.created_at,
+                }
+                let next = old
+                if (matchesFilters(typedPayload.new as Order)) {
+                  next = [placeholder as OrderWithDetails, ...old]
+                }
+                // Fire and forget: hydrate with full details
+                fetchOrderDetails(typedPayload.new.id).then((newOrder) => {
+                  if (!newOrder) return
+                  queryClient.setQueryData(
+                    ['orders', filters],
+                    (curr: OrderWithDetails[] | undefined) => {
+                      if (!curr) return curr
+                      const withoutTemp = curr.filter(
+                        (o) => o.id !== typedPayload.new.id
+                      )
+                      return matchesFilters(newOrder)
+                        ? [newOrder, ...withoutTemp]
+                        : withoutTemp
+                    }
+                  )
                 })
-              })
               // Notify
               toast.success('New order received!', { icon: '📦', duration: 4000 })
               if (typeof window !== 'undefined' && window.Audio) {
@@ -119,26 +174,27 @@ export function useRealtimeOrders(filters?: {
 
             case 'UPDATE':
               // Update existing order
-              const updated = old.map(order => 
-                order.id === payload.new.id 
-                  ? { ...order, ...payload.new }
+              const updated = old.map((order) =>
+                order.id === typedPayload.new.id
+                  ? { ...order, ...typedPayload.new }
                   : order
               )
-              
+
               // Check if order needs to be removed based on filters
-              if (!matchesFilters(payload.new as Order)) {
-                return updated.filter(o => o.id !== payload.new.id)
+              if (!matchesFilters(typedPayload.new as Order)) {
+                return updated.filter((o) => o.id !== typedPayload.new.id)
               }
-              
+
               return updated
 
             case 'DELETE':
-              return old.filter(order => order.id !== payload.old.id)
+              return old.filter((order) => order.id !== typedPayload.old.id)
 
             default:
               return old
+            }
           }
-        })
+        )
 
         // Sooner consistency refresh
         setTimeout(() => refetch(), 250)
@@ -152,45 +208,7 @@ export function useRealtimeOrders(filters?: {
     return () => {
       realtimeManager.unsubscribe(channel)
     }
-  }, [filters, queryClient, refetch])
-
-  // Helper to check if order matches current filters
-  const matchesFilters = (order: Partial<Order>): boolean => {
-    if (filters?.status && order.status !== filters.status) return false
-    if (filters?.driver_id && order.driver_id !== filters.driver_id) return false
-    if (filters?.customer_id && order.customer_id !== filters.customer_id) return false
-    if (filters?.date_range && order.order_date) {
-      const orderDate = new Date(order.order_date)
-      if (orderDate < filters.date_range.start || orderDate > filters.date_range.end) {
-        return false
-      }
-    }
-    return true
-  }
-
-  // Fetch full order details
-  const fetchOrderDetails = async (orderId: string): Promise<OrderWithDetails | null> => {
-    const { data, error } = await supabase
-      .from('orders')
-      .select(`
-        *,
-        customer:customers(*),
-        driver:users(*),
-        items:order_items(
-          *,
-          inventory(*)
-        )
-      `)
-      .eq('id', orderId)
-      .single()
-
-    if (error) {
-      console.error('Error fetching order details:', error)
-      return null
-    }
-
-    return data as OrderWithDetails
-  }
+  }, [filters, queryClient, refetch, fetchOrderDetails, matchesFilters])
 
   // Create order mutation
   const createOrder = useMutation({
@@ -200,29 +218,32 @@ export function useRealtimeOrders(filters?: {
       // Start transaction
       const { data: order, error: orderError } = await supabase
         .from('orders')
+        // @ts-expect-error - typed Supabase client misaligns insert generics
         .insert(orderData)
         .select()
         .single()
 
       if (orderError) throw orderError
+      const createdOrder = order as Order
 
       // Insert order items
       if (items.length > 0) {
         const { error: itemsError } = await supabase
           .from('order_items')
+          // @ts-expect-error - typed Supabase client misaligns insert generics
           .insert(items.map(item => ({
             ...item,
-            order_id: order.id,
+            order_id: createdOrder.id,
           })))
 
         if (itemsError) {
           // Rollback order creation
-          await supabase.from('orders').delete().eq('id', order.id)
+          await supabase.from('orders').delete().eq('id', createdOrder.id)
           throw itemsError
         }
       }
 
-      return order
+      return createdOrder
     },
     onMutate: async (newOrder) => {
       // Optimistic update
@@ -231,13 +252,16 @@ export function useRealtimeOrders(filters?: {
       const previousOrders = queryClient.getQueryData(['orders', filters])
       
       // Add optimistic order
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const { items: _items, ...orderFields } = newOrder
       const optimisticOrder: Partial<OrderWithDetails> = {
-        ...newOrder,
+        ...orderFields,
         id: `temp-${Date.now()}`,
         order_number: 'PENDING...',
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
         balance_due: newOrder.total_amount - (newOrder.paid_amount || 0),
+        items: [],
       }
 
       queryClient.setQueryData(['orders', filters], (old: OrderWithDetails[] | undefined) => {
@@ -265,6 +289,7 @@ export function useRealtimeOrders(filters?: {
     mutationFn: async ({ id, updates }: { id: string; updates: OrderUpdate }) => {
       const { error } = await supabase
         .from('orders')
+        // @ts-expect-error - typed Supabase client misaligns update generics
         .update(updates)
         .eq('id', id)
 
@@ -333,6 +358,7 @@ export function useRealtimeOrders(filters?: {
 
       const { error } = await supabase
         .from('orders')
+        // @ts-expect-error - typed Supabase client misaligns update generics
         .update(updates)
         .eq('id', orderIdToUpdate)
 
@@ -342,6 +368,7 @@ export function useRealtimeOrders(filters?: {
       if (status === 'needs_reassignment') {
         await supabase
           .from('notifications')
+          // @ts-expect-error - typed Supabase client misaligns insert generics
           .insert({
             title: 'Order Needs Reassignment',
             message: `Order requires reassignment: ${notes || 'No reason provided'}`,
@@ -351,13 +378,13 @@ export function useRealtimeOrders(filters?: {
           })
       }
     },
-    onMutate: async ({ id, status }) => {
-      // Play sound for urgent statuses
-      if (status === 'needs_reassignment' && typeof window !== 'undefined' && window.Audio) {
-        const audio = new Audio('/alert.mp3')
-        audio.play().catch(() => {})
-      }
-    },
+      onMutate: async ({ status }) => {
+        // Play sound for urgent statuses
+        if (status === 'needs_reassignment' && typeof window !== 'undefined' && window.Audio) {
+          const audio = new Audio('/alert.mp3')
+          audio.play().catch(() => {})
+        }
+      },
     onSuccess: (_, { status }) => {
       toast.success(`Order ${status.replace('_', ' ')}`)
     },

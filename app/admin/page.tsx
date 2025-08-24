@@ -27,7 +27,7 @@ import {
 } from 'lucide-react'
 import { useRealtimeOrders } from '@/hooks/useRealtimeOrders'
 import { useRealtimePitches } from '@/hooks/useRealtimePitches'
-import { format, isToday, isThisWeek, isThisMonth } from 'date-fns'
+import { format, startOfToday, subWeeks, subMonths, subYears, isToday } from 'date-fns'
 import { motion, AnimatePresence } from 'framer-motion'
 import { toast } from 'react-hot-toast'
 import { createClient } from '@/lib/supabase/client'
@@ -105,11 +105,20 @@ export default function AdminDashboard() {
     connectionStatus: pitchConnectionStatus
   } = useRealtimePitches({
     date_range: {
-      start: selectedTimeFrame === 'today' 
-        ? new Date(new Date().setHours(0, 0, 0, 0))
-        : selectedTimeFrame === 'week'
-        ? new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
-        : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
+      start: (() => {
+        const now = new Date()
+        switch (selectedTimeFrame) {
+          case 'today':
+            return startOfToday()
+          case 'week':
+            return subWeeks(now, 1)
+          case 'month':
+            return subMonths(now, 1)
+          case 'year':
+          default:
+            return subYears(now, 1)
+        }
+      })(),
       end: new Date()
     }
   })
@@ -123,16 +132,17 @@ export default function AdminDashboard() {
 
       switch (selectedTimeFrame) {
         case 'today':
-          startDate = new Date(now.setHours(0, 0, 0, 0))
+          startDate = startOfToday()
           break
         case 'week':
-          startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
+          startDate = subWeeks(now, 1)
           break
         case 'month':
-          startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
+          startDate = subMonths(now, 1)
           break
         case 'year':
-          startDate = new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000)
+        default:
+          startDate = subYears(now, 1)
           break
       }
 
