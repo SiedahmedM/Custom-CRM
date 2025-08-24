@@ -542,13 +542,20 @@ function PitchesPageContent() {
   // Verify GPS at shop location
   const verifyShopArrival = async (shop: NearbyShop) => {
     try {
+      console.log('Verifying GPS location for shop:', shop.name)
       const position = await getCurrentPosition()
+      
+      console.log('Current position:', position.coords.latitude, position.coords.longitude)
+      console.log('Shop position:', shop.lat, shop.lng)
+      
       const distance = calculateDistance(
         position.coords.latitude,
         position.coords.longitude,
         shop.lat,
         shop.lng
       )
+      
+      console.log('Distance to shop:', distance, 'miles')
       
       // Within 0.1 miles (~500 feet) is considered "at location"
       const isAtLocation = distance <= 0.1
@@ -560,17 +567,21 @@ function PitchesPageContent() {
           duration: 3000
         })
       } else {
-        toast.warning(`You are ${distance.toFixed(2)} miles from the shop`, {
-          icon: '⚠️',
+        toast.success(`Distance: ${distance.toFixed(2)} miles from ${shop.name}`, {
+          icon: '📍',
           duration: 4000
         })
       }
       
       return isAtLocation
     } catch (error) {
-      setGpsVerified(false)
-      toast.error('Could not verify GPS location')
-      return false
+      console.error('GPS verification error:', error)
+      setGpsVerified(null) // Set to null instead of false to indicate unable to verify
+      toast.success(`Selected ${shop.name} - GPS verification skipped`, {
+        icon: '📍',
+        duration: 3000
+      })
+      return true // Allow pitch to proceed even if GPS fails
     }
   }
 
@@ -590,34 +601,49 @@ function PitchesPageContent() {
     if (!user || !selectedShop) return
     
     setIsSubmitting(true)
+    console.log('Starting pitch submission with data:', data)
     
     try {
-      // Get current location for verification
-      const position = await getCurrentPosition()
+      let latitude: number | null = null
+      let longitude: number | null = null
+      let verificationStatus: 'verified' | 'questionable' | 'flagged' = 'questionable'
       
-      // Calculate actual distance for verification
-      const actualDistance = calculateDistance(
-        position.coords.latitude,
-        position.coords.longitude,
-        selectedShop.lat,
-        selectedShop.lng
-      )
-      
-      // Determine verification status
-      let verificationStatus: 'verified' | 'questionable' | 'flagged' = 'verified'
-      if (actualDistance > 0.5) {
-        verificationStatus = 'flagged'
-      } else if (actualDistance > 0.1) {
+      // Try to get current location for verification, but don't fail if it doesn't work
+      try {
+        const position = await getCurrentPosition()
+        latitude = position.coords.latitude
+        longitude = position.coords.longitude
+        
+        // Calculate actual distance for verification
+        const actualDistance = calculateDistance(
+          position.coords.latitude,
+          position.coords.longitude,
+          selectedShop.lat,
+          selectedShop.lng
+        )
+        
+        console.log('GPS Distance to shop:', actualDistance, 'miles')
+        
+        // Determine verification status
+        if (actualDistance <= 0.1) {
+          verificationStatus = 'verified'
+        } else if (actualDistance <= 0.5) {
+          verificationStatus = 'questionable'
+        } else {
+          verificationStatus = 'flagged'
+        }
+        
+      } catch (gpsError) {
+        console.warn('GPS location failed, submitting without GPS:', gpsError)
         verificationStatus = 'questionable'
       }
       
-      // Prepare pitch data
+      // Prepare pitch data - only include required fields
       const pitchData = {
         driver_id: user.id,
-        customer_id: null,
         shop_name: selectedShop.name,
-        contact_name: selectedShop.address,
-        phone: selectedShop.phone,
+        contact_name: data.decision_maker_name || selectedShop.name,
+        phone: selectedShop.phone || 'Call for info',
         pitch_date: new Date().toISOString(),
         decision_maker_contacted: data.decision_maker_contacted,
         decision_maker_name: data.decision_maker_name || null,
@@ -626,11 +652,10 @@ function PitchesPageContent() {
         follow_up_required: data.follow_up_required,
         follow_up_date: data.follow_up_date || null,
         notes: data.notes || null,
-        location_verified: gpsVerified || false,
+        location_verified: gpsVerified === true,
         verification_status: verificationStatus,
-        latitude: position.coords.latitude,
-        longitude: position.coords.longitude,
-        auto_verify_location: false
+        latitude,
+        longitude
       }
       
       console.log('Submitting pitch data:', pitchData)
@@ -657,13 +682,20 @@ function PitchesPageContent() {
       
     } catch (error) {
       console.error('Failed to log pitch:', error)
+      console.error('Error details:', JSON.stringify(error, null, 2))
       
       // More detailed error reporting
-      const errorMessage = error instanceof Error 
-        ? error.message 
-        : typeof error === 'string' 
-        ? error 
-        : 'Unknown error occurred'
+      let errorMessage = 'Unknown error occurred'
+      
+      if (error && typeof error === 'object') {
+        if ('message' in error) {
+          errorMessage = String(error.message)
+        } else if ('error' in error && typeof error.error === 'object' && 'message' in error.error) {
+          errorMessage = String(error.error.message)
+        }
+      } else if (typeof error === 'string') {
+        errorMessage = error
+      }
       
       toast.error(`Failed to log pitch: ${errorMessage}`)
     } finally {
