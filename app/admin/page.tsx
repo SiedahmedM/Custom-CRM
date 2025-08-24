@@ -27,7 +27,7 @@ import {
 } from 'lucide-react'
 import { useRealtimeOrders } from '@/hooks/useRealtimeOrders'
 import { useRealtimePitches } from '@/hooks/useRealtimePitches'
-import { format, startOfToday, subWeeks, subMonths, subYears } from 'date-fns'
+import { format, startOfToday, subWeeks, subMonths, subYears, isToday } from 'date-fns'
 import { motion, AnimatePresence } from 'framer-motion'
 import { toast } from 'react-hot-toast'
 import { createClient } from '@/lib/supabase/client'
