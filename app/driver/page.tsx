@@ -13,14 +13,16 @@ import {
   AlertCircle,
   Home,
   ClipboardList,
-  Box,
   User,
   Bell,
   DollarSign,
   ChevronRight,
-  Navigation
+  Navigation,
+  Target,
+  Star
 } from 'lucide-react'
 import { useRealtimeOrders } from '@/hooks/useRealtimeOrders'
+import { useRealtimePitches } from '@/hooks/useRealtimePitches'
 import { format } from 'date-fns'
 import { motion, AnimatePresence } from 'framer-motion'
 export default function DriverDashboard() {
@@ -34,6 +36,11 @@ export default function DriverDashboard() {
       router.push('/')
     }
   }, [user, isDriver, router])
+
+  // Get pitch data
+  const { pitches } = useRealtimePitches({
+    driver_id: user?.id
+  })
 
   // Add iOS viewport adjustments
   useEffect(() => {
@@ -90,11 +97,21 @@ export default function DriverDashboard() {
   )
 
   // Calculate today's stats
+  const todayPitches = pitches?.filter(p => {
+    const today = new Date()
+    const pitchDate = new Date(p.pitch_date)
+    return pitchDate.toDateString() === today.toDateString()
+  }) || []
+  
+  const highInterestToday = todayPitches.filter(p => p.interest_level === 'high').length
+  
   const todayStats = {
     totalDeliveries: completedOrders.length,
     pendingDeliveries: pendingOrders.length,
     revenue: completedOrders.reduce((sum, order) => sum + order.total_amount, 0),
-    inProgress: inProgressOrders.length
+    inProgress: inProgressOrders.length,
+    todayPitches: todayPitches.length,
+    highInterestPitches: highInterestToday
   }
 
   const handleStartDelivery = async (orderId: string) => {
@@ -236,6 +253,44 @@ export default function DriverDashboard() {
             </div>
           </motion.div>
         </div>
+      </div>
+
+      {/* Pitches Card */}
+      <div className="px-5 py-4">
+        <motion.div 
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ delay: 0.2 }}
+          className="bg-gradient-to-r from-blue-600 to-blue-700 rounded-2xl p-5 shadow-sm active:scale-[0.98] transition-transform cursor-pointer"
+          onClick={() => router.push('/driver/pitches')}
+        >
+          <div className="flex items-center justify-between text-white">
+            <div className="flex-1">
+              <div className="flex items-center gap-2 mb-2">
+                <Target className="w-5 h-5" />
+                <h3 className="text-[15px] font-semibold">Sales Pitches</h3>
+              </div>
+              <p className="text-[11px] text-blue-100 mb-3">
+                Find and pitch to nearby muffler shops
+              </p>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <p className="text-[20px] font-bold">{todayStats.todayPitches}</p>
+                  <p className="text-[10px] text-blue-100">Today&apos;s Pitches</p>
+                </div>
+                <div>
+                  <p className="text-[20px] font-bold text-yellow-300">{todayStats.highInterestPitches}</p>
+                  <p className="text-[10px] text-blue-100">High Interest</p>
+                </div>
+              </div>
+            </div>
+            <div className="ml-4">
+              <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center">
+                <Star className="w-6 h-6" />
+              </div>
+            </div>
+          </div>
+        </motion.div>
       </div>
 
       {/* Main Content with iOS-style scrolling */}
@@ -495,19 +550,102 @@ export default function DriverDashboard() {
         </div>
       )}
 
-      {/* Inventory Tab */}
-      {activeTab === 'inventory' && (
+      {/* Pitches Tab */}
+      {activeTab === 'pitches' && (
         <div className="px-5 py-4">
-          <h2 className="text-[20px] font-semibold text-gray-900 mb-4">Inventory Status</h2>
-          <div className="text-center py-12">
-            <Box className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-            <h3 className="text-[17px] font-semibold text-gray-900 mb-2">
-              Coming Soon
-            </h3>
-            <p className="text-[15px] text-gray-500">
-              Inventory management for drivers will be available soon
-            </p>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-[20px] font-semibold text-gray-900">Sales Pitches</h2>
+            <button
+              onClick={() => router.push('/driver/pitches')}
+              className="bg-blue-600 text-white px-4 py-2 rounded-xl text-[13px] font-medium active:bg-blue-700 transition-colors"
+            >
+              Find Shops
+            </button>
           </div>
+          
+          {/* Today's Pitch Stats */}
+          <div className="grid grid-cols-3 gap-3 mb-6">
+            <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-200 text-center">
+              <p className="text-[24px] font-bold text-gray-900">{todayStats.todayPitches}</p>
+              <p className="text-[11px] text-gray-500 mt-1">Today</p>
+            </div>
+            <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-200 text-center">
+              <p className="text-[24px] font-bold text-green-600">{todayStats.highInterestPitches}</p>
+              <p className="text-[11px] text-gray-500 mt-1">High Interest</p>
+            </div>
+            <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-200 text-center">
+              <p className="text-[24px] font-bold text-blue-600">
+                {todayStats.todayPitches > 0 ? Math.round((todayStats.highInterestPitches / todayStats.todayPitches) * 100) : 0}%
+              </p>
+              <p className="text-[11px] text-gray-500 mt-1">Success Rate</p>
+            </div>
+          </div>
+
+          {/* Recent Pitches */}
+          {todayPitches.length > 0 ? (
+            <div>
+              <h3 className="text-[15px] font-semibold text-gray-900 mb-3">Today&apos;s Activity</h3>
+              <div className="space-y-3">
+                {todayPitches.slice(0, 5).map((pitch, index) => (
+                  <motion.div
+                    key={pitch.id}
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: index * 0.1 }}
+                    className="bg-white rounded-2xl p-4 shadow-sm border border-gray-200"
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex-1">
+                        <p className="font-semibold text-[15px] text-gray-900">
+                          {pitch.shop_name || 'Unknown Shop'}
+                        </p>
+                        <p className="text-[13px] text-gray-500 mt-0.5">
+                          {new Date(pitch.pitch_date).toLocaleTimeString('en-US', { 
+                            hour: 'numeric', 
+                            minute: '2-digit' 
+                          })}
+                        </p>
+                        <div className="flex items-center gap-2 mt-2">
+                          <div className={`w-2 h-2 rounded-full ${
+                            pitch.verification_score >= 80 ? 'bg-green-500' :
+                            pitch.verification_score >= 60 ? 'bg-yellow-500' : 'bg-red-500'
+                          }`} />
+                          <span className="text-[11px] text-gray-500">
+                            {pitch.verification_score >= 80 ? 'Verified' :
+                             pitch.verification_score >= 60 ? 'Questionable' : 'Flagged'}
+                          </span>
+                        </div>
+                      </div>
+                      <div className={`px-3 py-1 rounded-full text-[12px] font-medium ${
+                        pitch.interest_level === 'high' ? 'bg-green-100 text-green-700' :
+                        pitch.interest_level === 'medium' ? 'bg-yellow-100 text-yellow-700' :
+                        pitch.interest_level === 'low' ? 'bg-orange-100 text-orange-700' :
+                        'bg-gray-100 text-gray-700'
+                      }`}>
+                        {pitch.interest_level}
+                      </div>
+                    </div>
+                  </motion.div>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <div className="text-center py-12">
+              <Target className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+              <h3 className="text-[17px] font-semibold text-gray-900 mb-2">
+                No pitches today
+              </h3>
+              <p className="text-[15px] text-gray-500 mb-4">
+                Start finding nearby muffler shops to pitch to
+              </p>
+              <button
+                onClick={() => router.push('/driver/pitches')}
+                className="bg-blue-600 text-white px-6 py-3 rounded-xl font-medium active:bg-blue-700 transition-colors"
+              >
+                Find Shops Near Me
+              </button>
+            </div>
+          )}
         </div>
       )}
 
@@ -581,13 +719,13 @@ export default function DriverDashboard() {
             <span className="text-[10px] mt-1 font-medium">Orders</span>
           </button>
           <button
-            onClick={() => setActiveTab('inventory')}
+            onClick={() => setActiveTab('pitches')}
             className={`flex flex-col items-center py-2 pt-2.5 active:scale-95 transition-transform ${
-              activeTab === 'inventory' ? 'text-blue-600' : 'text-gray-400'
+              activeTab === 'pitches' ? 'text-blue-600' : 'text-gray-400'
             }`}
           >
-            <Box className="w-[22px] h-[22px]" strokeWidth={activeTab === 'inventory' ? 2.5 : 2} />
-            <span className="text-[10px] mt-1 font-medium">Inventory</span>
+            <Target className="w-[22px] h-[22px]" strokeWidth={activeTab === 'pitches' ? 2.5 : 2} />
+            <span className="text-[10px] mt-1 font-medium">Pitches</span>
           </button>
           <button
             onClick={() => setActiveTab('profile')}

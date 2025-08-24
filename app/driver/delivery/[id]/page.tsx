@@ -279,9 +279,9 @@ export default function DeliveryCompletionPage({ params }: { params: { id: strin
         window.navigator.vibrate([100, 50, 100])
       }
 
-      // Navigate to cold pitch after a short delay
+      // Navigate to pitches page after delivery completion
       setTimeout(() => {
-        router.push(`/driver/cold-pitch/${order.id}`)
+        router.push('/driver/pitches?from=delivery')
       }, 2000)
 
     } catch (error) {

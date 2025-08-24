@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { ConnectionStatus } from '@/components/ConnectionStatus'
 import { createClient } from '@/lib/supabase/client'
-import { ArrowLeft, Package } from 'lucide-react'
+import { ArrowLeft, Package, Target, ChevronRight } from 'lucide-react'
 
 export default function AdminDriverProfilePage({ params }: { params: { id: string } }) {
   const router = useRouter()
@@ -46,6 +46,25 @@ export default function AdminDriverProfilePage({ params }: { params: { id: strin
               <p className="text-[13px] text-gray-500">Name</p>
               <p className="text-[16px] font-semibold">{driver.name}</p>
             </div>
+            
+            {/* Pitch History Button */}
+            <button
+              onClick={() => router.push(`/admin/drivers/${params.id}/pitches`)}
+              className="w-full bg-blue-50 rounded-2xl p-4 shadow-sm border border-blue-200 active:bg-blue-100 transition-colors"
+            >
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-blue-100 rounded-xl flex items-center justify-center">
+                    <Target className="w-5 h-5 text-blue-600" />
+                  </div>
+                  <div className="text-left">
+                    <p className="text-[15px] font-semibold text-blue-900">View Pitch History</p>
+                    <p className="text-[12px] text-blue-600 mt-0.5">Sales pitches & GPS verification</p>
+                  </div>
+                </div>
+                <ChevronRight className="w-5 h-5 text-blue-600" />
+              </div>
+            </button>
             <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-200">
               <p className="text-[13px] text-gray-500 mb-2">Recent Orders</p>
               {orders.length === 0 ? (
