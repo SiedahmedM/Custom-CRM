@@ -13,6 +13,7 @@ type DeliveredOrder = {
   id: string
   total_amount: number
   created_at: string
+  delivered_at: string | null
   status: Database['public']['Tables']['orders']['Row']['status']
 }
 
@@ -61,7 +62,7 @@ export default function AdminReportsPage() {
   const { user, isAdmin } = useAuth()
   const supabase = createClient()
 
-  const [timeframe, setTimeframe] = useState<'today'|'week'|'month'>('month')
+  const [timeframe, setTimeframe] = useState<'today'|'week'|'month'|'year'>('month')
   const [refreshing, setRefreshing] = useState(false)
 
   const [orders, setOrders] = useState<DeliveredOrder[]>([])
@@ -76,21 +77,22 @@ export default function AdminReportsPage() {
     const now = new Date()
     if (timeframe === 'today') return { start: new Date(now.setHours(0,0,0,0)), end: new Date() }
     if (timeframe === 'week') return { start: new Date(Date.now() - 7*24*60*60*1000), end: new Date() }
-    return { start: new Date(Date.now() - 30*24*60*60*1000), end: new Date() }
+    if (timeframe === 'month') return { start: new Date(Date.now() - 30*24*60*60*1000), end: new Date() }
+    return { start: new Date(Date.now() - 365*24*60*60*1000), end: new Date() }
   }, [timeframe])
 
   async function load() {
     setRefreshing(true)
     try {
-      // Delivered orders in range
+      // Delivered orders in range (use delivered_at)
       const { data: delivered } = await supabase
         .from('orders')
-        .select('id, total_amount, created_at, status')
+        .select('id, total_amount, created_at, delivered_at, status')
         .eq('status', 'delivered')
-        .gte('created_at', range.start.toISOString())
-        .lte('created_at', range.end.toISOString())
+        .gte('delivered_at', range.start.toISOString())
+        .lte('delivered_at', range.end.toISOString())
 
-      const deliveredRows = (delivered || []) as Array<{ id: string; total_amount: number; created_at: string; status: DeliveredOrder['status'] }>
+      const deliveredRows = (delivered || []) as Array<{ id: string; total_amount: number; created_at: string; delivered_at: string | null; status: Database['public']['Tables']['orders']['Row']['status'] }>
       const orderIds = deliveredRows.map(o => o.id)
 
       // Order items for delivered orders with inventory costs
@@ -109,7 +111,7 @@ export default function AdminReportsPage() {
         .select('id, part_number, description, current_quantity, cost_per_unit, selling_price')
         .eq('is_active', true)
 
-      setOrders(deliveredRows)
+      setOrders(deliveredRows as DeliveredOrder[])
       setOrderItems(items)
       setInventory((inv || []) as InventoryLite[])
     } finally {
@@ -122,7 +124,7 @@ export default function AdminReportsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [timeframe])
 
-  // KPIs
+  // KPI Cards
   const revenue = useMemo(() => orders.reduce((s, o) => s + (o.total_amount || 0), 0), [orders])
   const cogs = useMemo(() => {
     return orderItems.reduce((s, it) => s + (it.quantity || 0) * ((it.inventory?.cost_per_unit) || 0), 0)
@@ -255,7 +257,7 @@ export default function AdminReportsPage() {
           </div>
           <div className="flex items-center gap-2">
             <div className="flex gap-2 bg-gray-100 rounded-xl p-1">
-              {(['today','week','month'] as const).map(tf => (
+              {(['today','week','month','year'] as const).map(tf => (
                 <button key={tf} onClick={() => setTimeframe(tf)} className={`px-3 py-1.5 rounded-lg text-[12px] font-medium ${timeframe===tf?'bg-white shadow text-gray-900':'text-gray-600'}`}>{tf}</button>
               ))}
             </div>

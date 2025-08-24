@@ -56,7 +56,7 @@ export default function AdminDashboard() {
   const router = useRouter()
   const supabase = createClient()
   const [refreshing, setRefreshing] = useState(false)
-  const [selectedTimeFrame, setSelectedTimeFrame] = useState<'today' | 'week' | 'month'>('today')
+  const [selectedTimeFrame, setSelectedTimeFrame] = useState<'today' | 'week' | 'month' | 'year'>('today')
   const [showReassignModal, setShowReassignModal] = useState(false)
   const [selectedOrder, setSelectedOrder] = useState<{
     id: string
@@ -131,6 +131,9 @@ export default function AdminDashboard() {
         case 'month':
           startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
           break
+        case 'year':
+          startDate = new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000)
+          break
       }
 
       // Fetch orders for time frame
@@ -170,28 +173,27 @@ export default function AdminDashboard() {
         .eq('role', 'driver')
         .eq('is_active', true)
 
-      const inRange = (o: {created_at: string}) => new Date(o.created_at) >= startDate && new Date(o.created_at) <= new Date()
-      const frameOrders = (timeFrameOrders || []).filter(inRange)
+      const nowDate = new Date()
+      const inCreatedRange = (o: {created_at: string}) => new Date(o.created_at) >= startDate && new Date(o.created_at) <= nowDate
+      const inStartedRange = (o: {delivery_started_at?: string | null}) => !!o.delivery_started_at && new Date(o.delivery_started_at) >= startDate && new Date(o.delivery_started_at) <= nowDate
+      const inDeliveredRange = (o: {delivered_at?: string | null}) => !!o.delivered_at && new Date(o.delivered_at) >= startDate && new Date(o.delivered_at) <= nowDate
+
+      const frameOrders = (timeFrameOrders || []).filter(inCreatedRange)
       const pendingOrders = frameOrders.filter((o: {status: string}) => o.status === 'pending' || o.status === 'needs_reassignment')
-      const activeDeliveries = frameOrders.filter((o: {status: string}) => o.status === 'out_for_delivery')
-      const deliveredOrders = frameOrders.filter((o: {status: string}) => o.status === 'delivered')
+      const activeDeliveries = (timeFrameOrders || []).filter((o: {status: string; delivery_started_at?: string | null}) => o.status === 'out_for_delivery' && inStartedRange(o))
+      const deliveredOrders = (timeFrameOrders || []).filter((o: {status: string; delivered_at?: string | null}) => o.status === 'delivered' && inDeliveredRange(o))
       
       const outstandingBalance = (customers || []).reduce((sum, c: {current_balance: number}) => sum + c.current_balance, 0)
       const todayRevenue = deliveredOrders.reduce((sum, o: {total_amount: number}) => sum + o.total_amount, 0)
 
       // Calculate driver performance
       const driverPerformance = (drivers || []).map((driver: {id: string; name: string; last_login?: string; created_at: string; orders?: {status: string; total_amount: number; created_at: string}[]; pitches?: {interest_level: string; created_at: string}[]}) => {
-        const driverOrders = driver.orders?.filter(o => 
-          selectedTimeFrame === 'today' ? isToday(new Date(o.created_at)) :
-          selectedTimeFrame === 'week' ? isThisWeek(new Date(o.created_at)) :
-          isThisMonth(new Date(o.created_at))
-        ) || []
-        
-        const driverPitches = driver.pitches?.filter(p => 
-          selectedTimeFrame === 'today' ? isToday(new Date(p.created_at)) :
-          selectedTimeFrame === 'week' ? isThisWeek(new Date(p.created_at)) :
-          isThisMonth(new Date(p.created_at))
-        ) || []
+        const inRangeGeneric = (d: string) => {
+          const dt = new Date(d)
+          return dt >= startDate && dt <= nowDate
+        }
+        const driverOrders = (driver.orders || []).filter(o => inRangeGeneric(o.created_at))
+        const driverPitches = (driver.pitches || []).filter(p => inRangeGeneric(p.created_at))
 
         const deliveredCount = driverOrders.filter(o => o.status === 'delivered').length
         const revenue = driverOrders.filter(o => o.status === 'delivered')
@@ -327,7 +329,7 @@ export default function AdminDashboard() {
           
           {/* Time Frame Selector */}
           <div className="flex items-center gap-2 mt-3">
-            {(['today', 'week', 'month'] as const).map((timeFrame) => (
+            {(['today', 'week', 'month', 'year'] as const).map((timeFrame) => (
               <button
                 key={timeFrame}
                 onClick={() => setSelectedTimeFrame(timeFrame)}
@@ -337,7 +339,7 @@ export default function AdminDashboard() {
                     : 'bg-gray-100 text-gray-600 active:bg-gray-200'
                 }`}
               >
-                {timeFrame === 'today' ? 'Today' : timeFrame === 'week' ? 'This Week' : 'This Month'}
+                {timeFrame === 'today' ? 'Today' : timeFrame === 'week' ? 'This Week' : timeFrame === 'month' ? 'This Month' : 'This Year'}
               </button>
             ))}
           </div>
