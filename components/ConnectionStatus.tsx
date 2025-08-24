@@ -47,28 +47,30 @@ export function ConnectionStatus() {
 
   return (
     <>
-      {/* Persistent indicator in corner */}
-      <div className="fixed top-4 right-4 z-50">
-        <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium backdrop-blur-sm transition-all ${
-          isOnline 
-            ? 'bg-green-500/20 text-green-400 border border-green-500/30' 
-            : 'bg-red-500/20 text-red-400 border border-red-500/30 animate-pulse'
-        }`}>
-          {isOnline ? (
-            <>
-              <Wifi className="w-3 h-3" />
-              <span>Connected</span>
-              <span className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
-            </>
-          ) : (
-            <>
-              <WifiOff className="w-3 h-3" />
-              <span>Offline</span>
-              <span className="w-2 h-2 bg-red-400 rounded-full animate-pulse" />
-            </>
-          )}
+      {/* Corner indicator: show only when offline or while showStatus is true */}
+      {(showStatus || !isOnline) && (
+        <div className="fixed top-4 right-4 z-50">
+          <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium backdrop-blur-sm transition-all ${
+            isOnline 
+              ? 'bg-green-500/20 text-green-400 border border-green-500/30' 
+              : 'bg-red-500/20 text-red-400 border border-red-500/30 animate-pulse'
+          }`}>
+            {isOnline ? (
+              <>
+                <Wifi className="w-3 h-3" />
+                <span>Connected</span>
+                <span className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
+              </>
+            ) : (
+              <>
+                <WifiOff className="w-3 h-3" />
+                <span>Offline</span>
+                <span className="w-2 h-2 bg-red-400 rounded-full animate-pulse" />
+              </>
+            )}
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Temporary notification */}
       <AnimatePresence>

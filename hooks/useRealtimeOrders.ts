@@ -88,25 +88,34 @@ export function useRealtimeOrders(filters?: {
 
           switch (payload.eventType) {
             case 'INSERT':
-              // Fetch full order details for new order
+              // Insert immediate lightweight placeholder for snappy UI, then hydrate
+              const placeholder: Partial<OrderWithDetails> = {
+                id: payload.new.id,
+                order_number: payload.new.order_number || 'NEW...',
+                customer: old[0]?.customer || ({} as any),
+                total_amount: payload.new.total_amount || 0,
+                status: payload.new.status,
+                created_at: payload.new.created_at,
+              }
+              let next = old
+              if (matchesFilters(payload.new as Order)) {
+                next = [placeholder as OrderWithDetails, ...old]
+              }
+              // Fire and forget: hydrate with full details
               fetchOrderDetails(payload.new.id).then(newOrder => {
-                if (newOrder && matchesFilters(newOrder)) {
-                  queryClient.setQueryData(['orders', filters], [newOrder, ...old])
-                  
-                  // Show notification
-                  toast.success('New order received!', {
-                    icon: '📦',
-                    duration: 5000,
-                  })
-                  
-                  // Play sound if admin
-                  if (typeof window !== 'undefined' && window.Audio) {
-                    const audio = new Audio('/notification.mp3')
-                    audio.play().catch(() => {})
-                  }
-                }
+                if (!newOrder) return
+                queryClient.setQueryData(['orders', filters], (curr: OrderWithDetails[] | undefined) => {
+                  if (!curr) return curr
+                  const withoutTemp = curr.filter(o => o.id !== payload.new.id)
+                  return matchesFilters(newOrder) ? [newOrder, ...withoutTemp] : withoutTemp
+                })
               })
-              return old
+              // Notify
+              toast.success('New order received!', { icon: '📦', duration: 4000 })
+              if (typeof window !== 'undefined' && window.Audio) {
+                const audio = new Audio('/notification.mp3'); audio.play().catch(() => {})
+              }
+              return next
 
             case 'UPDATE':
               // Update existing order
@@ -131,8 +140,8 @@ export function useRealtimeOrders(filters?: {
           }
         })
 
-        // Refetch to ensure consistency
-        setTimeout(() => refetch(), 1000)
+        // Sooner consistency refresh
+        setTimeout(() => refetch(), 250)
       },
       onError: (error) => {
         console.error('Orders subscription error:', error)
@@ -245,6 +254,8 @@ export function useRealtimeOrders(filters?: {
     },
     onSuccess: () => {
       toast.success('Order created successfully')
+      // Instant invalidate for fastest UI update
+      queryClient.invalidateQueries({ queryKey: ['orders'] })
       refetch()
     },
   })

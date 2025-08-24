@@ -20,10 +20,10 @@ import {
   UserCheck,
   X,
   Target,
-  MapPin,
   TrendingUp,
   Trophy,
-  Zap
+  Zap,
+  Home
 } from 'lucide-react'
 import { useRealtimeOrders } from '@/hooks/useRealtimeOrders'
 import { useRealtimePitches } from '@/hooks/useRealtimePitches'
@@ -142,6 +142,7 @@ export default function AdminDashboard() {
           driver:users(*)
         `)
         .gte('created_at', startDate.toISOString())
+        .lte('created_at', new Date().toISOString())
 
       // Fetch outstanding balances
       const { data: customers } = await supabase
@@ -169,10 +170,11 @@ export default function AdminDashboard() {
         .eq('role', 'driver')
         .eq('is_active', true)
 
-      const todayOrders = (timeFrameOrders || []).filter((o: {created_at: string}) => isToday(new Date(o.created_at)))
-      const pendingOrders = (timeFrameOrders || []).filter((o: {status: string}) => o.status === 'pending' || o.status === 'needs_reassignment')
-      const activeDeliveries = (timeFrameOrders || []).filter((o: {status: string}) => o.status === 'out_for_delivery')
-      const deliveredOrders = (timeFrameOrders || []).filter((o: {status: string}) => o.status === 'delivered')
+      const inRange = (o: {created_at: string}) => new Date(o.created_at) >= startDate && new Date(o.created_at) <= new Date()
+      const frameOrders = (timeFrameOrders || []).filter(inRange)
+      const pendingOrders = frameOrders.filter((o: {status: string}) => o.status === 'pending' || o.status === 'needs_reassignment')
+      const activeDeliveries = frameOrders.filter((o: {status: string}) => o.status === 'out_for_delivery')
+      const deliveredOrders = frameOrders.filter((o: {status: string}) => o.status === 'delivered')
       
       const outstandingBalance = (customers || []).reduce((sum, c: {current_balance: number}) => sum + c.current_balance, 0)
       const todayRevenue = deliveredOrders.reduce((sum, o: {total_amount: number}) => sum + o.total_amount, 0)
@@ -212,7 +214,7 @@ export default function AdminDashboard() {
       }) || []
 
       return {
-        todayOrders: todayOrders.length,
+        todayOrders: frameOrders.length,
         pendingOrders: pendingOrders.length,
         activeDeliveries: activeDeliveries.length,
         todayRevenue,
@@ -307,6 +309,12 @@ export default function AdminDashboard() {
                 className="px-3 py-1.5 bg-gray-100 rounded-lg text-[13px] font-medium active:bg-gray-200"
               >
                 Reports
+              </button>
+              <button
+                onClick={() => router.push('/admin')}
+                className="p-2 active:scale-95 transition-transform"
+              >
+                <Home className="w-[20px] h-[20px] text-gray-600" />
               </button>
               <button
                 onClick={logout}
@@ -587,51 +595,63 @@ export default function AdminDashboard() {
           </div>
         </div>
 
-        {/* Live Activity Feed */}
+        {/* Live Activity Feed - richer, larger cards */}
         <div className="bg-white rounded-2xl p-4 shadow-sm mb-4">
           <div className="flex items-center gap-2 mb-3">
             <Zap className="w-4 h-4 text-orange-500" />
             <h3 className="text-[15px] font-semibold text-gray-900">Live Activity</h3>
           </div>
-          <div className="space-y-3 max-h-40 overflow-y-auto">
+          <div className="space-y-3 max-h-64 overflow-y-auto">
             {pitches.slice(0, 5).map((pitch, index) => (
               <motion.div
                 key={pitch.id}
                 initial={{ opacity: 0, x: -20 }}
                 animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: index * 0.1 }}
-                className="flex items-center gap-3 p-2 bg-gray-50 rounded-xl"
+                transition={{ delay: index * 0.05 }}
+                className="p-3 bg-gray-50 rounded-2xl border border-gray-200"
               >
-                <div className={`w-2 h-2 rounded-full ${
-                  pitch.verification_score >= 80 ? 'bg-green-500' :
-                  pitch.verification_score >= 60 ? 'bg-yellow-500' : 'bg-red-500'
-                }`} />
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <p className="text-[13px] font-medium text-gray-900 truncate">
-                      {pitch.driver?.name}
+                <div className="flex items-start justify-between">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-1">
+                      <div className={`w-2.5 h-2.5 rounded-full ${
+                        pitch.verification_score >= 80 ? 'bg-green-500' :
+                        pitch.verification_score >= 60 ? 'bg-yellow-500' : 'bg-red-500'
+                      }`} />
+                      <p className="text-[14px] font-semibold text-gray-900 truncate">{pitch.driver?.name}</p>
+                      <span className={`text-[10px] px-2 py-0.5 rounded-full ${
+                        pitch.interest_level === 'high' ? 'bg-green-100 text-green-700' :
+                        pitch.interest_level === 'medium' ? 'bg-yellow-100 text-yellow-700' :
+                        pitch.interest_level === 'low' ? 'bg-orange-100 text-orange-700' : 'bg-gray-100 text-gray-700'
+                      }`}>{pitch.interest_level}</span>
+                      {pitch.latitude && pitch.longitude ? (
+                        <span className="text-[10px] text-green-700 bg-green-100 px-2 py-0.5 rounded-full">GPS</span>
+                      ) : (
+                        <span className="text-[10px] text-gray-600 bg-gray-100 px-2 py-0.5 rounded-full">No GPS</span>
+                      )}
+                    </div>
+                    <p className="text-[13px] text-gray-700">
+                      {pitch.shop_name || pitch.customer?.shop_name || 'Cold pitch'}
                     </p>
-                    <span className={`text-[10px] px-2 py-0.5 rounded-full ${
-                      pitch.interest_level === 'high' ? 'bg-green-100 text-green-700' :
-                      pitch.interest_level === 'medium' ? 'bg-yellow-100 text-yellow-700' :
-                      'bg-red-100 text-red-700'
-                    }`}>
-                      {pitch.interest_level}
-                    </span>
+                    <p className="text-[11px] text-gray-500">
+                      {format(new Date(pitch.pitch_date), 'EEE h:mm a')}
+                    </p>
+                    <div className="text-[12px] text-gray-600 mt-1">
+                      <div className="flex items-center gap-2">
+                        <span className="truncate">{(pitch as unknown as { address?: string }).address || 'Address not available'}</span>
+                        {((pitch as unknown as { phone?: string }).phone) && (
+                          <span className="text-blue-600">{(pitch as unknown as { phone?: string }).phone}</span>
+                        )}
+                      </div>
+                    </div>
                   </div>
-                  <p className="text-[11px] text-gray-500">
-                    {pitch.shop_name || pitch.customer?.shop_name || 'Cold pitch'} &bull; {format(new Date(pitch.pitch_date), 'h:mm a')}
-                  </p>
-                </div>
-                <div className="flex items-center gap-1">
-                  {pitch.latitude && pitch.longitude && (
-                    <MapPin className="w-3 h-3 text-green-500" />
-                  )}
-                  {pitch.potential_order_value && (
-                    <span className="text-[10px] font-medium text-gray-600">
-                      ${pitch.potential_order_value}
-                    </span>
-                  )}
+                  <div className="text-right ml-3">
+                    {pitch.potential_order_value && (
+                      <div className="text-[12px] text-gray-700">
+                        Potential
+                        <div className="text-[14px] font-semibold text-blue-700">${pitch.potential_order_value}</div>
+                      </div>
+                    )}
+                  </div>
                 </div>
               </motion.div>
             ))}

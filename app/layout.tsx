@@ -5,6 +5,7 @@ import { AuthProvider } from "@/contexts/AuthContext";
 import { Toaster } from "react-hot-toast";
 import { Providers } from "./providers";
 import { PWAInstaller } from "@/components/PWAInstaller";
+import GlobalHomeButton from "@/components/GlobalHomeButton";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -53,6 +54,8 @@ export default function RootLayout({
           <AuthProvider>
             {children}
             <PWAInstaller />
+            {/* Global Home button (client-side) */}
+            <GlobalHomeButton />
             <Toaster
               position="top-right"
               toastOptions={{
