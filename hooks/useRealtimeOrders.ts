@@ -218,29 +218,32 @@ export function useRealtimeOrders(filters?: {
       // Start transaction
       const { data: order, error: orderError } = await supabase
         .from('orders')
+        // @ts-expect-error - typed Supabase client misaligns insert generics
         .insert(orderData)
         .select()
         .single()
 
       if (orderError) throw orderError
+      const createdOrder = order as Order
 
       // Insert order items
       if (items.length > 0) {
         const { error: itemsError } = await supabase
           .from('order_items')
+          // @ts-expect-error - typed Supabase client misaligns insert generics
           .insert(items.map(item => ({
             ...item,
-            order_id: order.id,
+            order_id: createdOrder.id,
           })))
 
         if (itemsError) {
           // Rollback order creation
-          await supabase.from('orders').delete().eq('id', order.id)
+          await supabase.from('orders').delete().eq('id', createdOrder.id)
           throw itemsError
         }
       }
 
-      return order
+      return createdOrder
     },
     onMutate: async (newOrder) => {
       // Optimistic update
@@ -249,13 +252,16 @@ export function useRealtimeOrders(filters?: {
       const previousOrders = queryClient.getQueryData(['orders', filters])
       
       // Add optimistic order
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const { items: _items, ...orderFields } = newOrder
       const optimisticOrder: Partial<OrderWithDetails> = {
-        ...newOrder,
+        ...orderFields,
         id: `temp-${Date.now()}`,
         order_number: 'PENDING...',
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
         balance_due: newOrder.total_amount - (newOrder.paid_amount || 0),
+        items: [],
       }
 
       queryClient.setQueryData(['orders', filters], (old: OrderWithDetails[] | undefined) => {
@@ -283,6 +289,7 @@ export function useRealtimeOrders(filters?: {
     mutationFn: async ({ id, updates }: { id: string; updates: OrderUpdate }) => {
       const { error } = await supabase
         .from('orders')
+        // @ts-expect-error - typed Supabase client misaligns update generics
         .update(updates)
         .eq('id', id)
 
@@ -351,6 +358,7 @@ export function useRealtimeOrders(filters?: {
 
       const { error } = await supabase
         .from('orders')
+        // @ts-expect-error - typed Supabase client misaligns update generics
         .update(updates)
         .eq('id', orderIdToUpdate)
 
@@ -360,6 +368,7 @@ export function useRealtimeOrders(filters?: {
       if (status === 'needs_reassignment') {
         await supabase
           .from('notifications')
+          // @ts-expect-error - typed Supabase client misaligns insert generics
           .insert({
             title: 'Order Needs Reassignment',
             message: `Order requires reassignment: ${notes || 'No reason provided'}`,
