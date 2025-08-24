@@ -346,13 +346,12 @@ const searchWithGooglePlaces = async (lat: number, lng: number): Promise<any[]> 
 }
 
 const pitchSchema = z.object({
-  shop_visited: z.string().min(1, 'Shop selection is required'),
-  decision_maker_contacted: z.boolean(),
+  shop_visited: z.string().optional(),
+  decision_maker_contacted: z.boolean().optional().default(false),
   decision_maker_name: z.string().optional(),
-  decision_maker_phone: z.string().optional(),
-  interest_level: z.enum(['high', 'medium', 'low', 'none']),
-  potential_order_value: z.number().min(0, 'Value must be positive'),
-  follow_up_required: z.boolean(),
+  interest_level: z.enum(['high', 'medium', 'low', 'none']).optional().default('none'),
+  potential_order_value: z.number().optional().default(0),
+  follow_up_required: z.boolean().optional().default(false),
   follow_up_date: z.string().optional(),
   notes: z.string().optional(),
 })
@@ -642,11 +641,9 @@ function PitchesPageContent() {
       const pitchData = {
         driver_id: user.id,
         shop_name: selectedShop.name,
-        contact_name: data.decision_maker_name || selectedShop.name,
         phone: selectedShop.phone || 'Call for info',
         pitch_date: new Date().toISOString(),
         decision_maker_contacted: data.decision_maker_contacted,
-        decision_maker_name: data.decision_maker_name || null,
         interest_level: data.interest_level,
         potential_order_value: data.potential_order_value,
         follow_up_required: data.follow_up_required,
