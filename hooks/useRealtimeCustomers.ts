@@ -290,7 +290,13 @@ export function useRealtimeCustomers(filters?: {
       const { data, error } = await supabase
         .from('payments')
         .insert({
-          ...payment,
+          order_id: payment.order_id,
+          customer_id: payment.customer_id,
+          amount: payment.amount,
+          payment_method: payment.payment_method,
+          payment_date: payment.payment_date,
+          reference_number: payment.reference_number,
+          notes: payment.notes,
           processed_by: payment.user_id ?? null
         } as never)
         .select()

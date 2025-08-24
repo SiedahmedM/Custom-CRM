@@ -187,7 +187,7 @@ export default function DeliveryCompletionPage({ params }: { params: { id: strin
       // 3. Record payment if any was made
       if (data.amount_paid > 0) {
         try {
-          await addPayment.mutateAsync({
+          const paymentData = {
             order_id: order.id,
             customer_id: order.customer_id,
             amount: data.amount_paid,
@@ -196,8 +196,13 @@ export default function DeliveryCompletionPage({ params }: { params: { id: strin
             reference_number: data.reference_number ?? null,
             notes: data.notes ?? null,
             user_id: user.id
-          })
+          }
+          
+          console.log('Submitting payment data:', paymentData)
+          await addPayment.mutateAsync(paymentData)
+          console.log('Payment recorded successfully')
         } catch (error) {
+          console.error('Payment submission error:', error)
           throw new Error(`Failed to record payment: ${error instanceof Error ? error.message : 'Unknown error'}`)
         }
       }
