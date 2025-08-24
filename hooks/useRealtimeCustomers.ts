@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase/client'
 import { realtimeManager } from '@/lib/supabase/realtime'
 import { toast } from 'react-hot-toast'
 import { Database } from '@/types/database'
+import { RealtimePostgresChangesPayload } from '@supabase/supabase-js'
 
 type Customer = Database['public']['Tables']['customers']['Row']
 type CustomerInsert = Database['public']['Tables']['customers']['Insert']
@@ -156,69 +157,84 @@ export function useRealtimeCustomers(filters?: {
   useEffect(() => {
     const customersChannel = realtimeManager.subscribe({
       table: 'customers',
-      callback: (
-        payload: {
-          eventType: 'INSERT' | 'UPDATE' | 'DELETE'
-          new: CustomerWithDetails
-          old: CustomerWithDetails
-        }
-      ) => {
-        queryClient.setQueryData(['customers', filters], (old: CustomerWithDetails[] | undefined) => {
-          if (!old) return old
+      callback: (payload) => {
+        const typedPayload =
+          payload as RealtimePostgresChangesPayload<CustomerWithDetails>
+        queryClient.setQueryData(
+          ['customers', filters],
+          (old: CustomerWithDetails[] | undefined) => {
+            if (!old) return old
 
-          switch (payload.eventType) {
-            case 'INSERT':
+            switch (typedPayload.eventType) {
+              case 'INSERT':
                 const newCustomer: CustomerWithDetails = {
-                  ...payload.new,
+                  ...typedPayload.new,
                   recent_orders: [],
                   recent_payments: [],
                   days_outstanding: 0,
                   last_order_date: null,
                   last_payment_date: null,
                   order_count: 0,
-                  total_revenue: 0
+                  total_revenue: 0,
                 }
-              
-              if (matchesFilters(newCustomer)) {
-                toast.success('New customer added!', {
-                  icon: '👤',
-                  duration: 3000,
-                })
-                return [...old, newCustomer].sort((a, b) => a.shop_name.localeCompare(b.shop_name))
-              }
-              return old
 
-            case 'UPDATE':
-              const updatedCustomers = old.map(customer => {
-                if (customer.id === payload.new.id) {
-                  const updated = { ...customer, ...payload.new }
-                  
-                  // Show balance change notification
-                  if (payload.new.current_balance !== customer.current_balance) {
-                    const change =
-                      payload.new.current_balance - customer.current_balance
-                    const changeText = change > 0 ? `increased by $${change.toFixed(2)}` : `decreased by $${Math.abs(change).toFixed(2)}`
-                    
-                    toast.success(`${customer.shop_name} balance ${changeText}`, {
-                      icon: change > 0 ? '📈' : '📉',
-                      duration: 4000,
-                    })
-                  }
-                  
-                  return updated
+                if (matchesFilters(newCustomer)) {
+                  toast.success('New customer added!', {
+                    icon: '👤',
+                    duration: 3000,
+                  })
+                  return [...old, newCustomer].sort((a, b) =>
+                    a.shop_name.localeCompare(b.shop_name)
+                  )
                 }
-                return customer
-              }).filter(customer => matchesFilters(customer))
-              
-              return updatedCustomers
+                return old
 
-            case 'DELETE':
-              return old.filter(customer => customer.id !== payload.old.id)
+              case 'UPDATE':
+                const updatedCustomers = old
+                  .map((customer) => {
+                    if (customer.id === typedPayload.new.id) {
+                      const updated = { ...customer, ...typedPayload.new }
 
-            default:
-              return old
+                      // Show balance change notification
+                      if (
+                        typedPayload.new.current_balance !==
+                        customer.current_balance
+                      ) {
+                        const change =
+                          typedPayload.new.current_balance -
+                          customer.current_balance
+                        const changeText =
+                          change > 0
+                            ? `increased by $${change.toFixed(2)}`
+                            : `decreased by $${Math.abs(change).toFixed(2)}`
+
+                        toast.success(
+                          `${customer.shop_name} balance ${changeText}`,
+                          {
+                            icon: change > 0 ? '📈' : '📉',
+                            duration: 4000,
+                          }
+                        )
+                      }
+
+                      return updated
+                    }
+                    return customer
+                  })
+                  .filter((customer) => matchesFilters(customer))
+
+                return updatedCustomers
+
+              case 'DELETE':
+                return old.filter(
+                  (customer) => customer.id !== typedPayload.old.id
+                )
+
+              default:
+                return old
+            }
           }
-        })
+        )
 
         // Refetch to ensure data consistency
         setTimeout(() => refetch(), 2000)
@@ -238,42 +254,46 @@ export function useRealtimeCustomers(filters?: {
   useEffect(() => {
     const paymentsChannel = realtimeManager.subscribe({
       table: 'payments',
-      callback: (
-        payload: {
-          eventType: 'INSERT' | 'UPDATE' | 'DELETE'
-          new: Database['public']['Tables']['payments']['Row']
-          old: Database['public']['Tables']['payments']['Row']
-        }
-      ) => {
-        queryClient.setQueryData(['customers', filters], (old: CustomerWithDetails[] | undefined) => {
-          if (!old) return old
+      callback: (payload) => {
+        const typedPayload =
+          payload as RealtimePostgresChangesPayload<
+            Database['public']['Tables']['payments']['Row']
+          >
+        queryClient.setQueryData(
+          ['customers', filters],
+          (old: CustomerWithDetails[] | undefined) => {
+            if (!old) return old
 
-          switch (payload.eventType) {
-            case 'INSERT':
-              // Find customer and update their recent payments
-              return old.map(customer => {
-                if (customer.id === payload.new.customer_id) {
-                  const newPayment = {
-                    id: payload.new.id,
-                    amount: payload.new.amount,
-                    payment_method: payload.new.payment_method,
-                    payment_date: payload.new.payment_date,
-                    reference_number: payload.new.reference_number
-                  }
-                  
-                  return {
-                    ...customer,
-                    recent_payments: [newPayment, ...(customer.recent_payments || [])].slice(0, 5),
-                    last_payment_date: payload.new.payment_date
-                  }
-                }
-                return customer
-              })
+            switch (typedPayload.eventType) {
+              case 'INSERT':
+                // Find customer and update their recent payments
+                return old.map((customer) => {
+                  if (customer.id === typedPayload.new.customer_id) {
+                    const newPayment = {
+                      id: typedPayload.new.id,
+                      amount: typedPayload.new.amount,
+                      payment_method: typedPayload.new.payment_method,
+                      payment_date: typedPayload.new.payment_date,
+                      reference_number: typedPayload.new.reference_number,
+                    }
 
-            default:
-              return old
+                    return {
+                      ...customer,
+                      recent_payments: [
+                        newPayment,
+                        ...(customer.recent_payments || []),
+                      ].slice(0, 5),
+                      last_payment_date: typedPayload.new.payment_date,
+                    }
+                  }
+                  return customer
+                })
+
+              default:
+                return old
+            }
           }
-        })
+        )
       },
       onError: (error) => {
         console.error('Payments subscription error:', error)

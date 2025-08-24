@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase/client'
 import { realtimeManager } from '@/lib/supabase/realtime'
 import { toast } from 'react-hot-toast'
 import { Database } from '@/types/database'
+import { RealtimePostgresChangesPayload } from '@supabase/supabase-js'
 
 type Order = Database['public']['Tables']['orders']['Row']
 type OrderInsert = Database['public']['Tables']['orders']['Insert']
@@ -123,43 +124,47 @@ export function useRealtimeOrders(filters?: {
   useEffect(() => {
     const channel = realtimeManager.subscribe({
       table: 'orders',
-      callback: (
-        payload: {
-          eventType: 'INSERT' | 'UPDATE' | 'DELETE'
-          new: Order
-          old: Order
-        }
-      ) => {
+      callback: (payload) => {
+        const typedPayload = payload as RealtimePostgresChangesPayload<Order>
         // Optimistically update the cache
-        queryClient.setQueryData(['orders', filters], (old: OrderWithDetails[] | undefined) => {
-          if (!old) return old
+        queryClient.setQueryData(
+          ['orders', filters],
+          (old: OrderWithDetails[] | undefined) => {
+            if (!old) return old
 
-          switch (payload.eventType) {
-            case 'INSERT':
-              // Insert immediate lightweight placeholder for snappy UI, then hydrate
+            switch (typedPayload.eventType) {
+              case 'INSERT':
+                // Insert immediate lightweight placeholder for snappy UI, then hydrate
                 const placeholder: Partial<OrderWithDetails> = {
-                  id: payload.new.id,
-                  order_number: payload.new.order_number || 'NEW...',
+                  id: typedPayload.new.id,
+                  order_number: typedPayload.new.order_number || 'NEW...',
                   customer:
                     old[0]?.customer ||
                     ({} as Database['public']['Tables']['customers']['Row']),
-                  total_amount: payload.new.total_amount || 0,
-                  status: payload.new.status,
-                  created_at: payload.new.created_at,
+                  total_amount: typedPayload.new.total_amount || 0,
+                  status: typedPayload.new.status,
+                  created_at: typedPayload.new.created_at,
                 }
-              let next = old
-              if (matchesFilters(payload.new as Order)) {
-                next = [placeholder as OrderWithDetails, ...old]
-              }
-              // Fire and forget: hydrate with full details
-              fetchOrderDetails(payload.new.id).then(newOrder => {
-                if (!newOrder) return
-                queryClient.setQueryData(['orders', filters], (curr: OrderWithDetails[] | undefined) => {
-                  if (!curr) return curr
-                  const withoutTemp = curr.filter(o => o.id !== payload.new.id)
-                  return matchesFilters(newOrder) ? [newOrder, ...withoutTemp] : withoutTemp
+                let next = old
+                if (matchesFilters(typedPayload.new as Order)) {
+                  next = [placeholder as OrderWithDetails, ...old]
+                }
+                // Fire and forget: hydrate with full details
+                fetchOrderDetails(typedPayload.new.id).then((newOrder) => {
+                  if (!newOrder) return
+                  queryClient.setQueryData(
+                    ['orders', filters],
+                    (curr: OrderWithDetails[] | undefined) => {
+                      if (!curr) return curr
+                      const withoutTemp = curr.filter(
+                        (o) => o.id !== typedPayload.new.id
+                      )
+                      return matchesFilters(newOrder)
+                        ? [newOrder, ...withoutTemp]
+                        : withoutTemp
+                    }
+                  )
                 })
-              })
               // Notify
               toast.success('New order received!', { icon: '📦', duration: 4000 })
               if (typeof window !== 'undefined' && window.Audio) {
@@ -169,26 +174,27 @@ export function useRealtimeOrders(filters?: {
 
             case 'UPDATE':
               // Update existing order
-              const updated = old.map(order => 
-                order.id === payload.new.id 
-                  ? { ...order, ...payload.new }
+              const updated = old.map((order) =>
+                order.id === typedPayload.new.id
+                  ? { ...order, ...typedPayload.new }
                   : order
               )
-              
+
               // Check if order needs to be removed based on filters
-              if (!matchesFilters(payload.new as Order)) {
-                return updated.filter(o => o.id !== payload.new.id)
+              if (!matchesFilters(typedPayload.new as Order)) {
+                return updated.filter((o) => o.id !== typedPayload.new.id)
               }
-              
+
               return updated
 
             case 'DELETE':
-              return old.filter(order => order.id !== payload.old.id)
+              return old.filter((order) => order.id !== typedPayload.old.id)
 
             default:
               return old
+            }
           }
-        })
+        )
 
         // Sooner consistency refresh
         setTimeout(() => refetch(), 250)
