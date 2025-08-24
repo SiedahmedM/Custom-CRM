@@ -25,7 +25,6 @@ import { createClient } from '@/lib/supabase/client'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { Database } from '@/types/database'
 
 const paymentSchema = z.object({
   order_total: z.number().min(0, 'Order total must be positive'),
@@ -136,6 +135,22 @@ export default function DeliveryCompletionPage({ params }: { params: { id: strin
   const onSubmit = async (data: PaymentFormData) => {
     if (!order || !user) return
 
+    // Validate required fields
+    if (!data.customer_signature || data.customer_signature.trim() === '') {
+      toast.error('Customer signature is required')
+      return
+    }
+
+    if (data.order_total <= 0) {
+      toast.error('Order total must be greater than 0')
+      return
+    }
+
+    if (data.amount_paid < 0) {
+      toast.error('Payment amount cannot be negative')
+      return
+    }
+
     setIsSubmitting(true)
     
     try {
@@ -143,79 +158,116 @@ export default function DeliveryCompletionPage({ params }: { params: { id: strin
       const deliveryTime = new Date().toISOString()
 
       // 1. Update order status to delivered
-      await updateOrderStatus.mutateAsync({
-        id: order.id,
-        status: 'delivered'
-      })
+      try {
+        await updateOrderStatus.mutateAsync({
+          id: order.id,
+          status: 'delivered'
+        })
+      } catch (error) {
+        throw new Error(`Failed to update order status: ${error instanceof Error ? error.message : 'Unknown error'}`)
+      }
 
       // 2. Update order with final amount and delivery details
-      await updateOrder.mutateAsync({
-        id: order.id,
-        updates: {
-          total_amount: data.order_total,
-          paid_amount: data.amount_paid,
-          delivered_at: deliveryTime,
-          delivery_latitude: currentLocation?.coords.latitude ?? null,
-          delivery_longitude: currentLocation?.coords.longitude ?? null,
-          special_instructions: data.notes ?? null
-        }
-      })
+      try {
+        await updateOrder.mutateAsync({
+          id: order.id,
+          updates: {
+            total_amount: data.order_total,
+            paid_amount: data.amount_paid,
+            delivered_at: deliveryTime,
+            delivery_latitude: currentLocation?.coords.latitude ?? null,
+            delivery_longitude: currentLocation?.coords.longitude ?? null,
+            special_instructions: data.notes ?? null
+          }
+        })
+      } catch (error) {
+        throw new Error(`Failed to update order details: ${error instanceof Error ? error.message : 'Unknown error'}`)
+      }
 
       // 3. Record payment if any was made
       if (data.amount_paid > 0) {
-        await addPayment.mutateAsync({
-          order_id: order.id,
-          customer_id: order.customer_id,
-          amount: data.amount_paid,
-          payment_method: data.payment_method,
-          payment_date: deliveryTime,
-          reference_number: data.reference_number ?? null,
-          notes: data.notes ?? null,
-          user_id: user.id
-        })
+        try {
+          await addPayment.mutateAsync({
+            order_id: order.id,
+            customer_id: order.customer_id,
+            amount: data.amount_paid,
+            payment_method: data.payment_method,
+            payment_date: deliveryTime,
+            reference_number: data.reference_number ?? null,
+            notes: data.notes ?? null,
+            user_id: user.id
+          })
+        } catch (error) {
+          throw new Error(`Failed to record payment: ${error instanceof Error ? error.message : 'Unknown error'}`)
+        }
       }
 
       // 4. Log activity for audit trail
-      await supabase
-        .from('activity_logs')
-        // @ts-expect-error Supabase type inference issue in this file; payload matches DB schema at runtime
-        .insert<Database['public']['Tables']['activity_logs']['Insert']>({
-          user_id: user.id,
-          action: 'delivery_completed',
-          entity_type: 'order',
-          entity_id: order.id,
-          details: {
-            order_total: data.order_total,
-            amount_paid: data.amount_paid,
-            payment_method: data.payment_method,
-            remaining_balance: remainingBalance,
-            delivery_coordinates: currentLocation ? {
-              latitude: currentLocation.coords.latitude,
-              longitude: currentLocation.coords.longitude,
-              accuracy: currentLocation.coords.accuracy
-            } : null,
-            timestamp: deliveryTime
-          } as Database['public']['Tables']['activity_logs']['Row']['details'],
-          ip_address: null,
-          user_agent: null
-        })
+      try {
+        const { error: activityError } = await supabase
+          .from('activity_logs')
+          // @ts-expect-error - Supabase types are complex for dynamic content
+          .insert({
+            user_id: user.id,
+            action: 'delivery_completed',
+            entity_type: 'order',
+            entity_id: order.id,
+            details: {
+              order_total: data.order_total,
+              amount_paid: data.amount_paid,
+              payment_method: data.payment_method,
+              remaining_balance: remainingBalance,
+              delivery_coordinates: currentLocation ? {
+                latitude: currentLocation.coords.latitude,
+                longitude: currentLocation.coords.longitude,
+                accuracy: currentLocation.coords.accuracy
+              } : null,
+              timestamp: deliveryTime
+            },
+            ip_address: null,
+            user_agent: null
+          })
+        
+        if (activityError) {
+          console.warn('Failed to log activity:', activityError)
+          // Don't throw error for logging failure
+        }
+      } catch (error) {
+        console.warn('Failed to log activity:', error)
+        // Don't throw error for logging failure
+      }
 
       // 5. Log completion location
-      await logDriverLocation(user.id, 'delivery_completed')
+      try {
+        await logDriverLocation(user.id, 'delivery_completed')
+      } catch (error) {
+        console.warn('Failed to log driver location:', error)
+        // Don't throw error for location logging failure
+      }
 
       // 6. Create notification for admin
-      await supabase
-        .from('notifications')
-        // @ts-expect-error Supabase type inference issue in this file; payload matches DB schema at runtime
-        .insert<Database['public']['Tables']['notifications']['Insert']>({
-          user_id: null,
-          title: 'Delivery Completed',
-          message: `${user.name} completed delivery to ${order.customer.shop_name} - $${data.amount_paid.toFixed(2)} collected`,
-          type: 'delivery',
-          priority: 'normal',
-          is_read: false,
-          related_order_id: order.id
-        })
+      try {
+        const { error: notificationError } = await supabase
+          .from('notifications')
+          // @ts-expect-error - Supabase types are complex for dynamic content
+          .insert({
+            user_id: null,
+            title: 'Delivery Completed',
+            message: `${user.name} completed delivery to ${order.customer.shop_name} - $${data.amount_paid.toFixed(2)} collected`,
+            type: 'delivery',
+            priority: 'normal',
+            is_read: false,
+            related_order_id: order.id
+          })
+        
+        if (notificationError) {
+          console.warn('Failed to create notification:', notificationError)
+          // Don't throw error for notification failure
+        }
+      } catch (error) {
+        console.warn('Failed to create notification:', error)
+        // Don't throw error for notification failure
+      }
 
       toast.success('Delivery completed successfully!', {
         icon: '��',
@@ -234,7 +286,15 @@ export default function DeliveryCompletionPage({ params }: { params: { id: strin
 
     } catch (error) {
       console.error('Failed to complete delivery:', error)
-      toast.error('Failed to complete delivery')
+      
+      // More detailed error reporting
+      const errorMessage = error instanceof Error 
+        ? error.message 
+        : typeof error === 'string' 
+        ? error 
+        : 'Unknown error occurred'
+      
+      toast.error(`Delivery completion failed: ${errorMessage}`)
     } finally {
       setIsSubmitting(false)
     }
