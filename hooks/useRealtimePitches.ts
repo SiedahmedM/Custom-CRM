@@ -320,23 +320,25 @@ export function useRealtimePitches(filters?: {
         }
       }
 
-      // Determine verification status based on various factors
-      let verificationStatus = 'verified'
-      
-      if (!finalPitchData.latitude || !finalPitchData.longitude) {
-        verificationStatus = 'questionable'
-      }
+      // Only override verification status if it wasn't provided
+      if (!finalPitchData.verification_status) {
+        let verificationStatus = 'verified'
+        
+        if (!finalPitchData.latitude || !finalPitchData.longitude) {
+          verificationStatus = 'questionable'
+        }
 
-      // Check for suspicious timing patterns
-      const now = new Date()
-      const pitchTime = new Date(finalPitchData.pitch_date)
-      const timeDiff = Math.abs(now.getTime() - pitchTime.getTime())
-      
-      if (timeDiff > 2 * 60 * 60 * 1000) { // More than 2 hours ago
-        verificationStatus = 'questionable'
-      }
+        // Check for suspicious timing patterns
+        const now = new Date()
+        const pitchTime = new Date(finalPitchData.pitch_date)
+        const timeDiff = Math.abs(now.getTime() - pitchTime.getTime())
+        
+        if (timeDiff > 2 * 60 * 60 * 1000) { // More than 2 hours ago
+          verificationStatus = 'questionable'
+        }
 
-      finalPitchData.verification_status = verificationStatus
+        finalPitchData.verification_status = verificationStatus
+      }
 
       const { data, error } = await supabase
         .from('pitch_attempts')

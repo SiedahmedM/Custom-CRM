@@ -614,7 +614,7 @@ export default function AdminDashboard() {
                     </span>
                   </div>
                   <p className="text-[11px] text-gray-500">
-                    {pitch.customer?.shop_name || 'Cold pitch'} &bull; {format(new Date(pitch.pitch_date), 'h:mm a')}
+                    {pitch.shop_name || pitch.customer?.shop_name || 'Cold pitch'} &bull; {format(new Date(pitch.pitch_date), 'h:mm a')}
                   </p>
                 </div>
                 <div className="flex items-center gap-1">

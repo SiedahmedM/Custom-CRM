@@ -102,7 +102,7 @@ const generateNearbyMufflerShops = (centerLat: number, centerLng: number): any[]
                     `${Math.floor(Math.random() * 900) + 200}`
     
     shops.push({
-      id: `shop_${i}_${Date.now()}`,
+      id: `shop_${i}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
       name: shopTypes[Math.floor(Math.random() * shopTypes.length)],
       address: `${streetNumber} ${streetName}, ${locationInfo.city}, ${locationInfo.state} ${zipCode}`,
       lat: shopLat,
@@ -339,8 +339,8 @@ function PitchesPageContent() {
         verificationStatus = 'questionable'
       }
       
-      // Log the pitch
-      await logPitch.mutateAsync({
+      // Prepare pitch data
+      const pitchData = {
         driver_id: user.id,
         customer_id: null,
         shop_name: selectedShop.name,
@@ -359,7 +359,13 @@ function PitchesPageContent() {
         latitude: position.coords.latitude,
         longitude: position.coords.longitude,
         auto_verify_location: false
-      })
+      }
+      
+      console.log('Submitting pitch data:', pitchData)
+      
+      // Log the pitch
+      const result = await logPitch.mutateAsync(pitchData)
+      console.log('Pitch submitted successfully:', result)
       
       toast.success('Pitch logged successfully!', {
         icon: '🎯',
@@ -379,7 +385,15 @@ function PitchesPageContent() {
       
     } catch (error) {
       console.error('Failed to log pitch:', error)
-      toast.error('Failed to log pitch. Please try again.')
+      
+      // More detailed error reporting
+      const errorMessage = error instanceof Error 
+        ? error.message 
+        : typeof error === 'string' 
+        ? error 
+        : 'Unknown error occurred'
+      
+      toast.error(`Failed to log pitch: ${errorMessage}`)
     } finally {
       setIsSubmitting(false)
     }
