@@ -46,12 +46,20 @@ export function useRealtimeCustomers(filters?: {
   const [connectionStatus, setConnectionStatus] = useState(true)
 
   // Helper to check if customer matches current filters
-  const matchesFilters = (customer: CustomerWithDetails): boolean => {
-    if (filters?.outstanding_only && customer.current_balance <= 0) return false
-    if (filters?.search_query && !customer.shop_name.toLowerCase().includes(filters.search_query.toLowerCase())) return false
-    if (filters?.assigned_driver_id && customer.assigned_driver_id !== filters.assigned_driver_id) return false
-    return true
-  }
+  const matchesFilters = useCallback(
+    (customer: CustomerWithDetails): boolean => {
+      if (filters?.outstanding_only && customer.current_balance <= 0) return false
+      if (
+        filters?.search_query &&
+        !customer.shop_name.toLowerCase().includes(filters.search_query.toLowerCase())
+      )
+        return false
+      if (filters?.assigned_driver_id && customer.assigned_driver_id !== filters.assigned_driver_id)
+        return false
+      return true
+    },
+    [filters]
+  )
 
   // Build query
   const buildQuery = useCallback(() => {
@@ -89,24 +97,43 @@ export function useRealtimeCustomers(filters?: {
       if (error) throw error
       
       // Enhance data with calculations
-      const rows = (data || []) as any[]
-      const enhancedData: CustomerWithDetails[] = rows.map((customer: any) => {
-        const recentOrders = (customer.recent_orders || []).slice(0, 5) as any[]
-        const recentPayments = (customer.recent_payments || []).slice(0, 5) as any[]
-        
-        const lastOrderDate = recentOrders.length > 0 
-          ? recentOrders.sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0].created_at
-          : null
-          
-        const lastPaymentDate = recentPayments.length > 0
-          ? recentPayments.sort((a: any, b: any) => new Date(b.payment_date).getTime() - new Date(a.payment_date).getTime())[0].payment_date
-          : null
+      const rows = (data ?? []) as CustomerWithDetails[]
+      const enhancedData: CustomerWithDetails[] = rows.map((customer) => {
+        const recentOrders = (customer.recent_orders ?? []).slice(0, 5)
+        const recentPayments = (customer.recent_payments ?? []).slice(0, 5)
 
-        const daysOutstanding = customer.current_balance > 0 && lastOrderDate
-          ? Math.floor((Date.now() - new Date(lastOrderDate).getTime()) / (1000 * 60 * 60 * 24))
-          : 0
+        const lastOrderDate =
+          recentOrders.length > 0
+            ? recentOrders
+                .sort(
+                  (a, b) =>
+                    new Date(b.created_at).getTime() -
+                    new Date(a.created_at).getTime()
+                )[0].created_at
+            : null
 
-        const totalRevenue = recentOrders.reduce((sum: number, order: any) => sum + order.total_amount, 0)
+        const lastPaymentDate =
+          recentPayments.length > 0
+            ? recentPayments
+                .sort(
+                  (a, b) =>
+                    new Date(b.payment_date).getTime() -
+                    new Date(a.payment_date).getTime()
+                )[0].payment_date
+            : null
+
+        const daysOutstanding =
+          customer.current_balance > 0 && lastOrderDate
+            ? Math.floor(
+                (Date.now() - new Date(lastOrderDate).getTime()) /
+                  (1000 * 60 * 60 * 24)
+              )
+            : 0
+
+        const totalRevenue = recentOrders.reduce(
+          (sum, order) => sum + order.total_amount,
+          0
+        )
 
         return {
           ...customer,
@@ -116,10 +143,10 @@ export function useRealtimeCustomers(filters?: {
           last_order_date: lastOrderDate,
           last_payment_date: lastPaymentDate,
           order_count: recentOrders.length,
-          total_revenue: totalRevenue
+          total_revenue: totalRevenue,
         }
       })
-      
+
       return enhancedData
     },
     refetchInterval: connectionStatus ? 30000 : false,
@@ -129,22 +156,28 @@ export function useRealtimeCustomers(filters?: {
   useEffect(() => {
     const customersChannel = realtimeManager.subscribe({
       table: 'customers',
-      callback: (payload: any) => {
+      callback: (
+        payload: {
+          eventType: 'INSERT' | 'UPDATE' | 'DELETE'
+          new: CustomerWithDetails
+          old: CustomerWithDetails
+        }
+      ) => {
         queryClient.setQueryData(['customers', filters], (old: CustomerWithDetails[] | undefined) => {
           if (!old) return old
 
           switch (payload.eventType) {
             case 'INSERT':
-              const newCustomer = {
-                ...payload.new,
-                recent_orders: [],
-                recent_payments: [],
-                days_outstanding: 0,
-                last_order_date: null,
-                last_payment_date: null,
-                order_count: 0,
-                total_revenue: 0
-              } as CustomerWithDetails
+                const newCustomer: CustomerWithDetails = {
+                  ...payload.new,
+                  recent_orders: [],
+                  recent_payments: [],
+                  days_outstanding: 0,
+                  last_order_date: null,
+                  last_payment_date: null,
+                  order_count: 0,
+                  total_revenue: 0
+                }
               
               if (matchesFilters(newCustomer)) {
                 toast.success('New customer added!', {
@@ -162,7 +195,8 @@ export function useRealtimeCustomers(filters?: {
                   
                   // Show balance change notification
                   if (payload.new.current_balance !== customer.current_balance) {
-                    const change = payload.new.current_balance - customer.current_balance
+                    const change =
+                      payload.new.current_balance - customer.current_balance
                     const changeText = change > 0 ? `increased by $${change.toFixed(2)}` : `decreased by $${Math.abs(change).toFixed(2)}`
                     
                     toast.success(`${customer.shop_name} balance ${changeText}`, {
@@ -204,7 +238,13 @@ export function useRealtimeCustomers(filters?: {
   useEffect(() => {
     const paymentsChannel = realtimeManager.subscribe({
       table: 'payments',
-      callback: (payload: any) => {
+      callback: (
+        payload: {
+          eventType: 'INSERT' | 'UPDATE' | 'DELETE'
+          new: Database['public']['Tables']['payments']['Row']
+          old: Database['public']['Tables']['payments']['Row']
+        }
+      ) => {
         queryClient.setQueryData(['customers', filters], (old: CustomerWithDetails[] | undefined) => {
           if (!old) return old
 
@@ -262,7 +302,8 @@ export function useRealtimeCustomers(filters?: {
       refetch()
     },
     onError: (error: unknown) => {
-      toast.error('Failed to add customer: ' + (error as any)?.message)
+      const message = error instanceof Error ? error.message : String(error)
+      toast.error('Failed to add customer: ' + message)
     },
   })
 
@@ -280,7 +321,8 @@ export function useRealtimeCustomers(filters?: {
       toast.success('Customer updated successfully!')
     },
     onError: (error: unknown) => {
-      toast.error('Failed to update customer: ' + (error as any)?.message)
+      const message = error instanceof Error ? error.message : String(error)
+      toast.error('Failed to update customer: ' + message)
     },
   })
 
@@ -343,11 +385,12 @@ export function useRealtimeCustomers(filters?: {
       // Refetch to get accurate balance from server
       setTimeout(() => refetch(), 1000)
     },
-    onError: (error: unknown, _variables: unknown) => {
-      toast.error('Failed to record payment: ' + (error as any)?.message)
-      // Revert optimistic update
-      refetch()
-    },
+      onError: (error: unknown) => {
+        const message = error instanceof Error ? error.message : String(error)
+        toast.error('Failed to record payment: ' + message)
+        // Revert optimistic update
+        refetch()
+      },
   })
 
   // Send balance reminder
@@ -382,7 +425,8 @@ export function useRealtimeCustomers(filters?: {
       })
     },
     onError: (error: unknown) => {
-      toast.error('Failed to send reminder: ' + (error as any)?.message)
+      const message = error instanceof Error ? error.message : String(error)
+      toast.error('Failed to send reminder: ' + message)
     },
   })
 
