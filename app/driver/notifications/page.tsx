@@ -64,6 +64,7 @@ export default function NotificationsPage() {
     try {
       const { error } = await supabase
         .from('notifications')
+        // @ts-expect-error Supabase types inference issue; payload matches Update
         .update({ is_read: true })
         .eq('id', notificationId)
 
@@ -90,6 +91,7 @@ export default function NotificationsPage() {
 
       const { error } = await supabase
         .from('notifications')
+        // @ts-expect-error Supabase types inference issue; payload matches Update
         .update({ is_read: true })
         .in('id', unreadIds)
 
@@ -178,7 +180,7 @@ export default function NotificationsPage() {
               No notifications
             </h3>
             <p className="text-[15px] text-gray-500">
-              You're all caught up! New notifications will appear here.
+              You&apos;re all caught up! New notifications will appear here.
             </p>
           </div>
         ) : (

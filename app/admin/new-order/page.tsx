@@ -104,7 +104,7 @@ export default function AdminNewOrderPage() {
   }, [supabase])
 
   // Check for duplicate orders in the last 24 hours
-  const checkDuplicateOrder = useCallback(async (customerId: string, items: any[]) => {
+  const checkDuplicateOrder = useCallback(async (customerId: string, items: { inventory_id: string; quantity: number }[]) => {
     if (!customerId || items.length === 0) return
 
     const twentyFourHoursAgo = new Date()
@@ -125,11 +125,19 @@ export default function AdminNewOrderPage() {
         .eq('customer_id', customerId)
         .gte('created_at', twentyFourHoursAgo.toISOString())
 
+      type OrderWithItems = {
+        id: string
+        order_number: string
+        created_at: string
+        order_items: { inventory_id: string; quantity: number }[]
+      }
+
       if (recentOrders && recentOrders.length > 0) {
         const currentItemsSet = new Set(items.map(item => `${item.inventory_id}_${item.quantity}`))
         
-        for (const order of recentOrders) {
-          const orderItemsSet = new Set((order.order_items || []).map((item: any) => `${item.inventory_id}_${item.quantity}`))
+        for (const order of recentOrders as OrderWithItems[]) {
+          const orderItems = order.order_items || []
+          const orderItemsSet = new Set(orderItems.map(item => `${item.inventory_id}_${item.quantity}`))
           
           // Check if items are identical
           if (currentItemsSet.size === orderItemsSet.size && 
@@ -267,7 +275,7 @@ export default function AdminNewOrderPage() {
           
           return {
             item,
-            currentStock: currentStock?.current_quantity || 0
+            currentStock: (currentStock as { current_quantity: number } | null)?.current_quantity || 0
           }
         })
       )
@@ -302,6 +310,7 @@ export default function AdminNewOrderPage() {
 
       const { data: order, error: orderError } = await supabase
         .from('orders')
+        // @ts-expect-error Supabase types inference issue; payload matches Insert
         .insert<Database['public']['Tables']['orders']['Insert']>(orderData)
         .select()
         .single()
@@ -321,6 +330,7 @@ export default function AdminNewOrderPage() {
 
       const { error: itemsError } = await supabase
         .from('order_items')
+        // @ts-expect-error Supabase types inference issue; payload matches Insert
         .insert<Database['public']['Tables']['order_items']['Insert']>(itemsData)
 
       if (itemsError) throw itemsError
@@ -329,6 +339,7 @@ export default function AdminNewOrderPage() {
       if (data.assignment_type === 'assign_driver' && data.driver_id) {
         await supabase
           .from('notifications')
+          // @ts-expect-error Supabase types inference issue; payload matches Insert
           .insert<Database['public']['Tables']['notifications']['Insert']>({
             user_id: data.driver_id,
             title: 'New Order Assigned',
@@ -347,7 +358,7 @@ export default function AdminNewOrderPage() {
           .eq('is_active', true)
 
         if (allDrivers && allDrivers.length > 0) {
-          const notifications = allDrivers.map(driver => ({
+          const notifications = allDrivers.map((driver: { id: string }) => ({
             user_id: driver.id,
             title: 'Order Available',
             message: `New order ${createdOrder.order_number} available for ${selectedCustomer?.shop_name}`,
@@ -359,6 +370,7 @@ export default function AdminNewOrderPage() {
 
           await supabase
             .from('notifications')
+            // @ts-expect-error Supabase types inference issue; payload matches Insert
             .insert(notifications)
         }
       }

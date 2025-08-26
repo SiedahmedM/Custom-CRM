@@ -23,8 +23,7 @@ import {
   RefreshCw,
   MoreVertical,
   Trash2,
-  UserX,
-  CheckCircle
+  UserX
 } from 'lucide-react'
 import { useRealtimeOrders } from '@/hooks/useRealtimeOrders'
 import { useRealtimePitches } from '@/hooks/useRealtimePitches'

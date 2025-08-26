@@ -82,7 +82,7 @@ export default function NewOrderPage() {
   }, [supabase])
 
   // Check for duplicate orders in the last 24 hours
-  const checkDuplicateOrder = useCallback(async (customerId: string, items: any[]) => {
+  const checkDuplicateOrder = useCallback(async (customerId: string, items: { inventory_id: string; quantity: number }[]) => {
     if (!customerId || items.length === 0) return
 
     const twentyFourHoursAgo = new Date()
@@ -106,8 +106,16 @@ export default function NewOrderPage() {
       if (recentOrders && recentOrders.length > 0) {
         const currentItemsSet = new Set(items.map(item => `${item.inventory_id}_${item.quantity}`))
         
-        for (const order of recentOrders) {
-          const orderItemsSet = new Set((order.order_items || []).map((item: any) => `${item.inventory_id}_${item.quantity}`))
+        type OrderWithItems = {
+          id: string
+          order_number: string
+          created_at: string
+          order_items: { inventory_id: string; quantity: number }[]
+        }
+        
+        for (const order of recentOrders as OrderWithItems[]) {
+          const orderItems = order.order_items || []
+          const orderItemsSet = new Set(orderItems.map(item => `${item.inventory_id}_${item.quantity}`))
           
           // Check if items are identical
           if (currentItemsSet.size === orderItemsSet.size && 
@@ -234,7 +242,7 @@ export default function NewOrderPage() {
           
           return {
             item,
-            currentStock: currentStock?.current_quantity || 0
+            currentStock: (currentStock as { current_quantity: number } | null)?.current_quantity || 0
           }
         })
       )
