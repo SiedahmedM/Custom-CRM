@@ -23,7 +23,9 @@ import {
   TrendingUp,
   Trophy,
   Zap,
-  Home
+  Home,
+  FileText,
+  Users
 } from 'lucide-react'
 import { useRealtimeOrders } from '@/hooks/useRealtimeOrders'
 import { useRealtimePitches } from '@/hooks/useRealtimePitches'
@@ -65,6 +67,7 @@ export default function AdminDashboard() {
     customer: { shop_name: string }
   } | null>(null)
   const [dismissedOrders, setDismissedOrders] = useState<Set<string>>(new Set())
+  const [activeTab, setActiveTab] = useState<'home' | 'orders' | 'reports' | 'drivers'>('home')
 
   // Protect route
   useEffect(() => {
@@ -251,11 +254,16 @@ export default function AdminDashboard() {
     )
   )
 
-  // Show orders from last 12 hours
-  const twelveHoursAgo = new Date(Date.now() - 12 * 60 * 60 * 1000)
+  // Show orders from last 24 hours
+  const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000)
   const recentOrders = orders
-    .filter(o => new Date(o.created_at) >= twelveHoursAgo)
+    .filter(o => new Date(o.created_at) >= twentyFourHoursAgo && !dismissedOrders.has(o.id))
     .slice(0, 10)
+
+  const clearRecentOrder = (orderId: string) => {
+    setDismissedOrders(prev => new Set([...prev, orderId]))
+    toast.success('Order cleared from recent list')
+  }
 
   const handleRefresh = async () => {
     setRefreshing(true)
@@ -607,80 +615,30 @@ export default function AdminDashboard() {
           </div>
         </div>
 
-        {/* Live Activity Feed - richer, larger cards */}
-        <div className="bg-white rounded-2xl p-4 shadow-sm mb-4">
-          <div className="flex items-center gap-2 mb-3">
-            <Zap className="w-4 h-4 text-orange-500" />
-            <h3 className="text-[15px] font-semibold text-gray-900">Live Activity</h3>
-          </div>
-          <div className="space-y-3 max-h-64 overflow-y-auto">
-            {pitches.slice(0, 5).map((pitch, index) => (
-              <motion.div
-                key={pitch.id}
-                initial={{ opacity: 0, x: -20 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: index * 0.05 }}
-                className="p-3 bg-gray-50 rounded-2xl border border-gray-200"
-              >
-                <div className="flex items-start justify-between">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
-                      <div className={`w-2.5 h-2.5 rounded-full ${
-                        pitch.verification_score >= 80 ? 'bg-green-500' :
-                        pitch.verification_score >= 60 ? 'bg-yellow-500' : 'bg-red-500'
-                      }`} />
-                      <p className="text-[14px] font-semibold text-gray-900 truncate">{pitch.driver?.name}</p>
-                      <span className={`text-[10px] px-2 py-0.5 rounded-full ${
-                        pitch.interest_level === 'high' ? 'bg-green-100 text-green-700' :
-                        pitch.interest_level === 'medium' ? 'bg-yellow-100 text-yellow-700' :
-                        pitch.interest_level === 'low' ? 'bg-orange-100 text-orange-700' : 'bg-gray-100 text-gray-700'
-                      }`}>{pitch.interest_level}</span>
-                      {pitch.latitude && pitch.longitude ? (
-                        <span className="text-[10px] text-green-700 bg-green-100 px-2 py-0.5 rounded-full">GPS</span>
-                      ) : (
-                        <span className="text-[10px] text-gray-600 bg-gray-100 px-2 py-0.5 rounded-full">No GPS</span>
-                      )}
-                    </div>
-                    <p className="text-[13px] text-gray-700">
-                      {pitch.shop_name || pitch.customer?.shop_name || 'Cold pitch'}
-                    </p>
-                    <p className="text-[11px] text-gray-500">
-                      {format(new Date(pitch.pitch_date), 'EEE h:mm a')}
-                    </p>
-                    <div className="text-[12px] text-gray-600 mt-1">
-                      <div className="flex items-center gap-2">
-                        <span className="truncate">{(pitch as unknown as { address?: string }).address || 'Address not available'}</span>
-                        {((pitch as unknown as { phone?: string }).phone) && (
-                          <span className="text-blue-600">{(pitch as unknown as { phone?: string }).phone}</span>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                  <div className="text-right ml-3">
-                    {pitch.potential_order_value && (
-                      <div className="text-[12px] text-gray-700">
-                        Potential
-                        <div className="text-[14px] font-semibold text-blue-700">${pitch.potential_order_value}</div>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </motion.div>
-            ))}
-            {pitches.length === 0 && (
-              <div className="text-center py-4">
-                <Target className="w-8 h-8 text-gray-300 mx-auto mb-2" />
-                <p className="text-[13px] text-gray-500">No pitch activity yet today</p>
-              </div>
-            )}
-          </div>
-        </div>
 
         {/* Real-time Driver Leaderboard */}
         <div className="bg-white rounded-2xl p-4 shadow-sm">
-          <div className="flex items-center gap-2 mb-3">
-            <Trophy className="w-4 h-4 text-yellow-500" />
-            <h3 className="text-[15px] font-semibold text-gray-900">Pitch Leaderboard</h3>
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <Trophy className="w-4 h-4 text-yellow-500" />
+              <h3 className="text-[15px] font-semibold text-gray-900">Pitch Leaderboard</h3>
+            </div>
+            {/* Time Filter Selector */}
+            <div className="flex items-center gap-1">
+              {(['today', 'week', 'month', 'year'] as const).map((timeFrame) => (
+                <button
+                  key={timeFrame}
+                  onClick={() => setSelectedTimeFrame(timeFrame)}
+                  className={`px-2 py-1 rounded-lg text-[10px] font-medium transition-all ${
+                    selectedTimeFrame === timeFrame
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-gray-100 text-gray-600 active:bg-gray-200'
+                  }`}
+                >
+                  {timeFrame === 'today' ? 'Day' : timeFrame === 'week' ? 'Week' : timeFrame === 'month' ? 'Month' : 'Year'}
+                </button>
+              ))}
+            </div>
           </div>
           <div className="space-y-3">
             {pitchDriverPerformance.slice(0, 3).map((driver, index) => (
@@ -834,14 +792,24 @@ export default function AdminDashboard() {
       <div className="px-5 py-4 border-t border-gray-100 pb-safe">
         <div className="flex items-center justify-between mb-3">
           <h2 className="text-[15px] font-semibold text-gray-900">
-            Recent Orders
+            Recent Orders (24 hours)
           </h2>
-          <button
-            onClick={() => router.push('/admin/orders')}
-            className="text-[13px] font-medium text-blue-600 active:text-blue-700"
-          >
-            View All
-          </button>
+          <div className="flex items-center gap-2">
+            {recentOrders.length > 0 && (
+              <button
+                onClick={() => setDismissedOrders(new Set(recentOrders.map(o => o.id)))}
+                className="text-[11px] font-medium text-gray-500 active:text-gray-700 bg-gray-100 px-2 py-1 rounded-lg"
+              >
+                Clear All
+              </button>
+            )}
+            <button
+              onClick={() => router.push('/admin/orders')}
+              className="text-[13px] font-medium text-blue-600 active:text-blue-700"
+            >
+              View All
+            </button>
+          </div>
         </div>
 
         <div className="space-y-3">
@@ -854,7 +822,7 @@ export default function AdminDashboard() {
               onClick={() => router.push(`/admin/orders/${order.id}`)}
             >
               <div className="flex items-start justify-between">
-                <div className="flex-1">
+                <div className="flex-1 cursor-pointer" onClick={() => router.push(`/admin/orders/${order.id}`)}>
                   <div className="flex items-center gap-2 mb-2">
                     {order.status === 'delivered' ? (
                       <CheckCircle className="w-4 h-4 text-green-500" />
@@ -885,7 +853,19 @@ export default function AdminDashboard() {
                     ${order.total_amount.toFixed(2)} • {format(new Date(order.created_at), 'h:mm a')}
                   </p>
                 </div>
-                <ChevronRight className="w-5 h-5 text-gray-400" />
+                <div className="flex items-center gap-2 ml-3">
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      clearRecentOrder(order.id)
+                    }}
+                    className="p-2 bg-gray-100 text-gray-600 rounded-lg active:bg-gray-200 transition-colors"
+                    title="Clear from recent"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                  <ChevronRight className="w-5 h-5 text-gray-400" />
+                </div>
               </div>
             </motion.div>
           ))}
@@ -915,8 +895,71 @@ export default function AdminDashboard() {
         )}
       </AnimatePresence>
 
+      {/* Bottom Navigation */}
+      <div className="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-md border-t border-gray-200/50 z-40"
+           style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
+        <div className="grid grid-cols-4 px-2 py-2">
+          <button
+            onClick={() => setActiveTab('home')}
+            className={`flex flex-col items-center gap-1 p-3 rounded-xl transition-all ${
+              activeTab === 'home' 
+                ? 'bg-blue-50 text-blue-600' 
+                : 'text-gray-500 active:bg-gray-50'
+            }`}
+          >
+            <Home className="w-5 h-5" />
+            <span className="text-[10px] font-medium">Home</span>
+          </button>
+          
+          <button
+            onClick={() => {
+              setActiveTab('orders')
+              router.push('/admin/orders')
+            }}
+            className={`flex flex-col items-center gap-1 p-3 rounded-xl transition-all ${
+              activeTab === 'orders' 
+                ? 'bg-blue-50 text-blue-600' 
+                : 'text-gray-500 active:bg-gray-50'
+            }`}
+          >
+            <Package className="w-5 h-5" />
+            <span className="text-[10px] font-medium">All Orders</span>
+          </button>
+          
+          <button
+            onClick={() => {
+              setActiveTab('reports')
+              router.push('/admin/reports')
+            }}
+            className={`flex flex-col items-center gap-1 p-3 rounded-xl transition-all ${
+              activeTab === 'reports' 
+                ? 'bg-blue-50 text-blue-600' 
+                : 'text-gray-500 active:bg-gray-50'
+            }`}
+          >
+            <FileText className="w-5 h-5" />
+            <span className="text-[10px] font-medium">Reports</span>
+          </button>
+          
+          <button
+            onClick={() => {
+              setActiveTab('drivers')
+              router.push('/admin/drivers')
+            }}
+            className={`flex flex-col items-center gap-1 p-3 rounded-xl transition-all ${
+              activeTab === 'drivers' 
+                ? 'bg-blue-50 text-blue-600' 
+                : 'text-gray-500 active:bg-gray-50'
+            }`}
+          >
+            <Users className="w-5 h-5" />
+            <span className="text-[10px] font-medium">Drivers</span>
+          </button>
+        </div>
+      </div>
+
       {/* Bottom Safe Area */}
-      <div style={{ height: 'env(safe-area-inset-bottom)' }} />
+      <div style={{ height: 'calc(env(safe-area-inset-bottom) + 70px)' }} />
     </div>
   )
 }
