@@ -5,6 +5,8 @@ import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { toast } from 'react-hot-toast'
 import { Database } from '@/types/database'
+import { checkConnectivity, isNetworkError } from '@/lib/utils/connectivity'
+import { cacheUserForOffline, validateOfflineCredentials, clearOfflineCache } from '@/lib/utils/offline-auth'
 
 interface User {
   id: string
@@ -79,6 +81,36 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       setLoading(true)
       
+      // Check connectivity before attempting login
+      const isConnected = await checkConnectivity()
+      if (!isConnected) {
+        // Try offline validation with cached credentials
+        const cachedUser = await validateOfflineCredentials(accessKey)
+        if (cachedUser) {
+          setUser({
+            id: cachedUser.id,
+            access_key: accessKey,
+            name: cachedUser.name,
+            role: cachedUser.role,
+            phone: cachedUser.phone,
+            email: cachedUser.email,
+          })
+          
+          toast.success(`Welcome back, ${cachedUser.name}! (Offline mode)`)
+          
+          // Redirect based on role
+          if (cachedUser.role === 'admin') {
+            router.push('/admin')
+          } else {
+            router.push('/driver')
+          }
+          return
+        } else {
+          toast.error('No internet connection. Please connect to wifi or mobile data to sign in for the first time.')
+          throw new Error('No internet connection and no cached credentials')
+        }
+      }
+      
       const { data: userRecordRaw, error } = await supabase
         .from('users')
         .select('*')
@@ -92,15 +124,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         throw new Error('Invalid access key')
       }
 
-      setUser({
+      const newUser = {
         id: userRecord.id,
         access_key: userRecord.access_key,
         name: userRecord.name,
         role: userRecord.role,
         phone: userRecord.phone || undefined,
         email: userRecord.email || undefined,
-      })
+      }
+      
+      setUser(newUser)
       localStorage.setItem('access_key', accessKey)
+      
+      // Cache user for offline access
+      await cacheUserForOffline(newUser, accessKey)
       
       // Update last login
       await supabase
@@ -129,6 +166,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     } catch (error) {
       console.error('Login error:', error)
+      
+      // Additional network error handling for edge cases
+      if (isNetworkError(error)) {
+        toast.error('Connection failed. Please check your internet connection and try again.')
+      }
+      
       throw error
     } finally {
       setLoading(false)
@@ -151,6 +194,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       setUser(null)
       localStorage.removeItem('access_key')
+      clearOfflineCache()
       router.push('/')
       toast.success('Logged out successfully')
     } catch (error) {
