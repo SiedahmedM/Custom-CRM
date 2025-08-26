@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { Wifi, WifiOff } from 'lucide-react'
 import { realtimeManager } from '@/lib/supabase/realtime'
 import { motion, AnimatePresence } from 'framer-motion'
+import { DarkModeToggle } from './DarkModeToggle'
 
 export function ConnectionStatus() {
   const [isOnline, setIsOnline] = useState(true)
@@ -47,6 +48,11 @@ export function ConnectionStatus() {
 
   return (
     <>
+      {/* Dark mode toggle - always visible */}
+      <div className="fixed top-4 left-4 z-50">
+        <DarkModeToggle />
+      </div>
+
       {/* Corner indicator: show only when offline or while showStatus is true */}
       {(showStatus || !isOnline) && (
         <div className="fixed top-4 right-4 z-50">

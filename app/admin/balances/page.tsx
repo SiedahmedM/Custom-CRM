@@ -15,7 +15,8 @@ import {
   Send,
   Eye,
   RefreshCw,
-  CheckCircle
+  CheckCircle,
+  TrendingUp
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { format } from 'date-fns'
@@ -38,7 +39,7 @@ export default function OutstandingBalancesPage() {
   const router = useRouter()
   const { user, isAdmin } = useAuth()
   const [searchQuery, setSearchQuery] = useState('')
-  const [sortBy, setSortBy] = useState<'balance' | 'days' | 'customer'>('balance')
+  const [sortBy, setSortBy] = useState<'balance' | 'days' | 'customer' | 'clv'>('balance')
   const [showPaymentModal, setShowPaymentModal] = useState(false)
   const [selectedCustomer, setSelectedCustomer] = useState<typeof customers[0] | null>(null)
   const [showReminderModal, setShowReminderModal] = useState(false)
@@ -93,7 +94,13 @@ export default function OutstandingBalancesPage() {
   })
 
   // Sort customers
-  const sortedCustomers = [...customers].sort((a, b) => {
+  // Calculate Customer Lifetime Value (CLV)
+  const customersWithCLV = customers.map(customer => ({
+    ...customer,
+    clv: customer.total_revenue // CLV = Total Revenue (simplified for now)
+  }))
+
+  const sortedCustomers = [...customersWithCLV].sort((a, b) => {
     switch (sortBy) {
       case 'balance':
         return b.current_balance - a.current_balance
@@ -101,6 +108,8 @@ export default function OutstandingBalancesPage() {
         return b.days_outstanding - a.days_outstanding
       case 'customer':
         return a.shop_name.localeCompare(b.shop_name)
+      case 'clv':
+        return b.clv - a.clv
       default:
         return 0
     }
@@ -276,10 +285,11 @@ export default function OutstandingBalancesPage() {
               { value: 'balance', label: 'By Amount', icon: DollarSign },
               { value: 'days', label: 'By Days', icon: Clock },
               { value: 'customer', label: 'By Name', icon: User },
+              { value: 'clv', label: 'By CLV', icon: TrendingUp },
             ].map(({ value, label, icon: Icon }) => (
               <button
                 key={value}
-                onClick={() => setSortBy(value as 'balance' | 'days' | 'customer')}
+                onClick={() => setSortBy(value as 'balance' | 'days' | 'customer' | 'clv')}
                 className={`flex items-center gap-2 px-3 py-2 rounded-xl text-[13px] font-medium transition-all ${
                   sortBy === value
                     ? 'bg-blue-600 text-white'
@@ -341,18 +351,24 @@ export default function OutstandingBalancesPage() {
                   </div>
 
                   {/* Customer Details */}
-                  <div className="grid grid-cols-2 gap-4 mb-4 text-center">
+                  <div className="grid grid-cols-3 gap-2 mb-4 text-center">
                     <div>
-                      <p className="text-[16px] font-semibold text-gray-900">
+                      <p className="text-[15px] font-semibold text-gray-900">
                         {customer.order_count}
                       </p>
-                      <p className="text-[11px] text-gray-500 uppercase tracking-wide">Recent Orders</p>
+                      <p className="text-[10px] text-gray-500 uppercase tracking-wide">Orders</p>
                     </div>
                     <div>
-                      <p className="text-[16px] font-semibold text-green-600">
+                      <p className="text-[15px] font-semibold text-green-600">
                         ${customer.total_revenue.toFixed(0)}
                       </p>
-                      <p className="text-[11px] text-gray-500 uppercase tracking-wide">Total Revenue</p>
+                      <p className="text-[10px] text-gray-500 uppercase tracking-wide">Revenue</p>
+                    </div>
+                    <div>
+                      <p className="text-[15px] font-semibold text-purple-600">
+                        ${customer.clv.toFixed(0)}
+                      </p>
+                      <p className="text-[10px] text-gray-500 uppercase tracking-wide">CLV</p>
                     </div>
                   </div>
 

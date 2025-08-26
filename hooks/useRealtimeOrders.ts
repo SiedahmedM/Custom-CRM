@@ -5,6 +5,7 @@ import { realtimeManager } from '@/lib/supabase/realtime'
 import { toast } from 'react-hot-toast'
 import { Database } from '@/types/database'
 import { RealtimePostgresChangesPayload } from '@supabase/supabase-js'
+import { OfflineStorage } from '@/lib/offline/compression'
 
 type Order = Database['public']['Tables']['orders']['Row']
 type OrderInsert = Database['public']['Tables']['orders']['Insert']
@@ -69,11 +70,32 @@ export function useRealtimeOrders(filters?: {
   const { data: orders, isLoading, error, refetch } = useQuery({
     queryKey: ['orders', filters],
     queryFn: async () => {
+      // Try to get data from server
       const { data, error } = await buildQuery()
-      if (error) throw error
+      
+      if (error) {
+        // If offline, try to get cached data
+        if (!connectionStatus) {
+          const cachedOrders = OfflineStorage.getCachedOrders<OrderWithDetails>()
+          if (cachedOrders) {
+            console.log('Using cached orders (offline mode)')
+            return cachedOrders
+          }
+        }
+        throw error
+      }
+      
+      // Cache the successful response for offline use
+      if (data && data.length > 0) {
+        OfflineStorage.cacheOrders(data).catch(err => 
+          console.warn('Failed to cache orders:', err)
+        )
+      }
+      
       return data as OrderWithDetails[]
     },
     refetchInterval: connectionStatus ? 30000 : false,
+    retry: connectionStatus ? 3 : 0, // Don't retry when offline
   })
 
   // Helper to check if order matches current filters

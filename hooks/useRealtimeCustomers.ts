@@ -5,6 +5,7 @@ import { realtimeManager } from '@/lib/supabase/realtime'
 import { toast } from 'react-hot-toast'
 import { Database } from '@/types/database'
 import { RealtimePostgresChangesPayload } from '@supabase/supabase-js'
+import { OfflineStorage } from '@/lib/offline/compression'
 
 type Customer = Database['public']['Tables']['customers']['Row']
 type CustomerInsert = Database['public']['Tables']['customers']['Insert']
@@ -95,7 +96,18 @@ export function useRealtimeCustomers(filters?: {
     queryKey: ['customers', filters],
     queryFn: async () => {
       const { data, error } = await buildQuery()
-      if (error) throw error
+      
+      if (error) {
+        // If offline, try to get cached data
+        if (!connectionStatus) {
+          const cachedCustomers = OfflineStorage.getCachedCustomers<CustomerWithDetails>()
+          if (cachedCustomers) {
+            console.log('Using cached customers (offline mode)')
+            return cachedCustomers
+          }
+        }
+        throw error
+      }
       
       // Enhance data with calculations
       const rows = (data ?? []) as CustomerWithDetails[]
@@ -148,9 +160,17 @@ export function useRealtimeCustomers(filters?: {
         }
       })
 
+      // Cache the enhanced data for offline use
+      if (enhancedData && enhancedData.length > 0) {
+        OfflineStorage.cacheCustomers(enhancedData).catch(err => 
+          console.warn('Failed to cache customers:', err)
+        )
+      }
+
       return enhancedData
     },
     refetchInterval: connectionStatus ? 30000 : false,
+    retry: connectionStatus ? 3 : 0, // Don't retry when offline
   })
 
   // Set up real-time subscription for customers
