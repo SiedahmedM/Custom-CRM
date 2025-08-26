@@ -4,7 +4,7 @@ import { useRouter } from 'next/navigation'
 import { useState } from 'react'
 import { ConnectionStatus } from '@/components/ConnectionStatus'
 import { useRealtimeOrders } from '@/hooks/useRealtimeOrders'
-import { ArrowLeft, ChevronRight, Package, Filter, Trash2, AlertTriangle, Home, FileText, Users } from 'lucide-react'
+import { ArrowLeft, ChevronRight, Package, Filter, Trash2, AlertTriangle, Home, FileText, Users, Search, X } from 'lucide-react'
 import { format, startOfToday, subWeeks, subMonths, subYears } from 'date-fns'
 import { motion, AnimatePresence } from 'framer-motion'
 import { toast } from 'react-hot-toast'
@@ -19,6 +19,7 @@ export default function AdminOrdersPage() {
   const { orders, isLoading, refetch } = useRealtimeOrders()
   const [selectedTimeFilter, setSelectedTimeFilter] = useState<TimeFilter>('month')
   const [selectedStatusFilter, setSelectedStatusFilter] = useState<StatusFilter>('all')
+  const [searchQuery, setSearchQuery] = useState('')
   const [showDeleteModal, setShowDeleteModal] = useState(false)
   const [orderToDelete, setOrderToDelete] = useState<{
     id: string
@@ -55,7 +56,16 @@ export default function AdminOrdersPage() {
     // Status filter
     const statusMatch = selectedStatusFilter === 'all' || order.status === selectedStatusFilter
     
-    return timeMatch && statusMatch
+    // Search filter
+    const searchMatch = !searchQuery || 
+      order.customer?.shop_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      order.order_number?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      order.items?.some(item => 
+        item.inventory?.part_number?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        item.inventory?.description?.toLowerCase().includes(searchQuery.toLowerCase())
+      )
+    
+    return timeMatch && statusMatch && searchMatch
   })
   
   const handleDeleteOrder = async () => {
@@ -95,6 +105,28 @@ export default function AdminOrdersPage() {
             <h1 className="text-[17px] font-semibold text-gray-900">All Orders</h1>
           </div>
           
+          {/* Search */}
+          <div className="mb-3">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+              <input
+                type="search"
+                placeholder="Search by customer, order number, or part..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full pl-10 pr-10 py-2.5 bg-gray-100 rounded-xl text-[14px] outline-none placeholder-gray-500"
+              />
+              {searchQuery && (
+                <button
+                  onClick={() => setSearchQuery('')}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 p-0.5 text-gray-400 hover:text-gray-600 transition-colors"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              )}
+            </div>
+          </div>
+
           {/* Filters */}
           <div className="space-y-3">
             {/* Time Filter */}
@@ -136,7 +168,7 @@ export default function AdminOrdersPage() {
             
             {/* Results count */}
             <p className="text-[11px] text-gray-500">
-              {filteredOrders.length} orders {selectedTimeFilter === 'day' ? 'today' : `in the past ${selectedTimeFilter}`}
+              {filteredOrders.length} orders {searchQuery ? `found for "${searchQuery}"` : selectedTimeFilter === 'day' ? 'today' : `in the past ${selectedTimeFilter}`}
             </p>
           </div>
         </div>

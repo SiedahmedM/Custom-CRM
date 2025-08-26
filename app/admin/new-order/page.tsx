@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
-import { ArrowLeft, Search, AlertCircle, X, Package } from 'lucide-react'
+import { ArrowLeft, Search, AlertCircle, X, Package, UserCheck } from 'lucide-react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
@@ -14,11 +14,11 @@ import { Database } from '@/types/database'
 
 const orderSchema = z.object({
   customer_id: z.string().min(1, 'Please select a customer'),
+  driver_id: z.string().optional(),
   contact_name: z.string().optional(),
   delivery_date: z.string().optional(),
   special_instructions: z.string().optional(),
-  can_deliver: z.enum(['yes', 'no', 'maybe']),
-  reassignment_reason: z.string().optional(),
+  assignment_type: z.enum(['assign_driver', 'needs_reassignment']),
   items: z.array(z.object({
     inventory_id: z.string(),
     quantity: z.number().min(1),
@@ -28,21 +28,32 @@ const orderSchema = z.object({
 
 type OrderFormData = z.infer<typeof orderSchema>
 
-export default function NewOrderPage() {
+export default function AdminNewOrderPage() {
   const router = useRouter()
   const { user } = useAuth()
   const supabase = createClient()
   
   const [customers, setCustomers] = useState<{id: string; shop_name: string; contact_name: string; address: string; phone: string; current_balance: number}[]>([])
+  const [drivers, setDrivers] = useState<{id: string; name: string; is_active: boolean}[]>([])
   const [inventory, setInventory] = useState<{id: string; part_number: string; description: string; selling_price: number; current_quantity: number; reorder_threshold: number | null}[]>([])
   const [searchQuery, setSearchQuery] = useState('')
+  const [driverSearchQuery, setDriverSearchQuery] = useState('')
   const [partSearchQuery, setPartSearchQuery] = useState('')
   const [selectedCustomer, setSelectedCustomer] = useState<{id: string; shop_name: string; contact_name: string; address?: string; phone?: string; current_balance: number} | null>(null)
+  const [selectedDriver, setSelectedDriver] = useState<{id: string; name: string} | null>(null)
   const [selectedItems, setSelectedItems] = useState<{ inventory_id: string; part: { id: string; part_number: string; description: string; selling_price: number; current_quantity: number }; quantity: number; unit_price: number }[]>([])
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [showCustomerSearch, setShowCustomerSearch] = useState(false)
+  const [showDriverSearch, setShowDriverSearch] = useState(false)
   const [showPartSearch, setShowPartSearch] = useState(false)
   const [duplicateOrderCheck, setDuplicateOrderCheck] = useState<string | null>(null)
+
+  // Protect route - admin only
+  useEffect(() => {
+    if (!user) {
+      router.push('/')
+    }
+  }, [user, router])
 
   const {
     register,
@@ -53,12 +64,12 @@ export default function NewOrderPage() {
   } = useForm<OrderFormData>({
     resolver: zodResolver(orderSchema),
     defaultValues: {
-      can_deliver: 'yes',
+      assignment_type: 'assign_driver',
       items: []
     }
   })
 
-  const canDeliver = watch('can_deliver')
+  const assignmentType = watch('assignment_type')
 
   const loadCustomers = useCallback(async () => {
     const { data } = await supabase
@@ -68,6 +79,17 @@ export default function NewOrderPage() {
       .order('shop_name')
 
     if (data) setCustomers(data)
+  }, [supabase])
+
+  const loadDrivers = useCallback(async () => {
+    const { data } = await supabase
+      .from('users')
+      .select('id, name, is_active')
+      .eq('role', 'driver')
+      .eq('is_active', true)
+      .order('name')
+
+    if (data) setDrivers(data)
   }, [supabase])
 
   const loadInventory = useCallback(async () => {
@@ -124,12 +146,12 @@ export default function NewOrderPage() {
     }
   }, [supabase])
 
-  // Load customers and inventory once on mount
+  // Load data on mount
   useEffect(() => {
     loadCustomers()
+    loadDrivers()
     loadInventory()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [loadCustomers, loadDrivers, loadInventory])
 
   // Check for duplicate orders when customer or items change
   useEffect(() => {
@@ -144,6 +166,10 @@ export default function NewOrderPage() {
     c.shop_name.toLowerCase().includes(searchQuery.toLowerCase())
   )
 
+  const filteredDrivers = drivers.filter(d =>
+    d.name.toLowerCase().includes(driverSearchQuery.toLowerCase())
+  )
+
   const filteredParts = inventory.filter(p => 
     p.part_number.toLowerCase().includes(partSearchQuery.toLowerCase()) ||
     p.description.toLowerCase().includes(partSearchQuery.toLowerCase())
@@ -155,6 +181,13 @@ export default function NewOrderPage() {
     setValue('contact_name', customer.contact_name)
     setShowCustomerSearch(false)
     setSearchQuery('')
+  }
+
+  const selectDriver = (driver: {id: string; name: string}) => {
+    setSelectedDriver(driver)
+    setValue('driver_id', driver.id)
+    setShowDriverSearch(false)
+    setDriverSearchQuery('')
   }
 
   const addItem = (part: {id: string; part_number: string; description: string; selling_price: number; current_quantity: number}) => {
@@ -248,16 +281,17 @@ export default function NewOrderPage() {
         setIsSubmitting(false)
         return
       }
-      // Create order
+
+      // Create order with admin-specific logic
       const orderData: Database['public']['Tables']['orders']['Insert'] = {
         customer_id: data.customer_id,
-        driver_id: data.can_deliver === 'no' ? null : user.id,
-        status: (data.can_deliver === 'no' ? 'needs_reassignment' : 'assigned') as Database['public']['Tables']['orders']['Row']['status'],
+        driver_id: data.assignment_type === 'assign_driver' && data.driver_id ? data.driver_id : null,
+        status: (data.assignment_type === 'needs_reassignment' ? 'needs_reassignment' : 'assigned') as Database['public']['Tables']['orders']['Row']['status'],
         order_date: new Date().toISOString(),
         delivery_address: selectedCustomer?.address || null,
         delivery_date: data.delivery_date || null,
         special_instructions: data.special_instructions || null,
-        reassignment_reason: data.reassignment_reason || null,
+        reassignment_reason: data.assignment_type === 'needs_reassignment' ? 'Admin marked for reassignment' : null,
         total_amount: calculateTotal(),
         paid_amount: 0,
         delivery_started_at: null,
@@ -268,7 +302,6 @@ export default function NewOrderPage() {
 
       const { data: order, error: orderError } = await supabase
         .from('orders')
-        // @ts-expect-error Supabase types inference issue; payload matches Insert
         .insert<Database['public']['Tables']['orders']['Insert']>(orderData)
         .select()
         .single()
@@ -288,32 +321,54 @@ export default function NewOrderPage() {
 
       const { error: itemsError } = await supabase
         .from('order_items')
-        // @ts-expect-error Supabase types inference issue; payload matches Insert[]
         .insert<Database['public']['Tables']['order_items']['Insert']>(itemsData)
 
       if (itemsError) throw itemsError
 
-      // Create notification for admin if needs reassignment
-      if (data.can_deliver === 'no') {
+      // Create notification for driver if assigned
+      if (data.assignment_type === 'assign_driver' && data.driver_id) {
         await supabase
           .from('notifications')
-          // @ts-expect-error Supabase types inference issue; payload matches Insert
           .insert<Database['public']['Tables']['notifications']['Insert']>({
-            title: 'Order Needs Reassignment',
-            message: `Order ${createdOrder.order_number} needs reassignment: ${data.reassignment_reason || 'No reason provided'}`,
+            user_id: data.driver_id,
+            title: 'New Order Assigned',
+            message: `Admin assigned you order ${createdOrder.order_number} for ${selectedCustomer?.shop_name}`,
             type: 'order',
-            priority: 'urgent',
+            priority: 'normal',
             related_order_id: createdOrder.id,
-            is_read: false,
-            user_id: null
+            is_read: false
           })
+      } else if (data.assignment_type === 'needs_reassignment') {
+        // Create notification for all drivers about available order
+        const { data: allDrivers } = await supabase
+          .from('users')
+          .select('id')
+          .eq('role', 'driver')
+          .eq('is_active', true)
+
+        if (allDrivers && allDrivers.length > 0) {
+          const notifications = allDrivers.map(driver => ({
+            user_id: driver.id,
+            title: 'Order Available',
+            message: `New order ${createdOrder.order_number} available for ${selectedCustomer?.shop_name}`,
+            type: 'order' as const,
+            priority: 'normal' as const,
+            related_order_id: createdOrder.id,
+            is_read: false
+          }))
+
+          await supabase
+            .from('notifications')
+            .insert(notifications)
+        }
       }
 
       toast.success('Order created successfully!')
-      router.push('/driver')
+      // Admin routes back to admin dashboard, not to suggested shops
+      router.push('/admin')
     } catch (error) {
       console.error('Error creating order:', error)
-      toast.error('Failed to create order')
+      toast.error('Failed to create order. Please try again.')
     } finally {
       setIsSubmitting(false)
     }
@@ -331,7 +386,7 @@ export default function NewOrderPage() {
             >
               <ArrowLeft className="w-[22px] h-[22px] text-blue-600" />
             </button>
-            <h1 className="text-[17px] font-semibold text-gray-900">New Order</h1>
+            <h1 className="text-[17px] font-semibold text-gray-900">New Order (Admin)</h1>
             <div className="w-8" />
           </div>
         </div>
@@ -420,6 +475,73 @@ export default function NewOrderPage() {
             </div>
           </motion.div>
         )}
+
+        {/* Driver Assignment */}
+        <div className="px-5 py-4 border-t border-gray-100">
+          <label className="text-[13px] font-medium text-gray-600 uppercase tracking-wide mb-3 block">
+            Driver Assignment
+          </label>
+          
+          <div className="grid grid-cols-2 gap-3 mb-4">
+            {(['assign_driver', 'needs_reassignment'] as const).map((option) => (
+              <button
+                key={option}
+                type="button"
+                onClick={() => {
+                  setValue('assignment_type', option)
+                  if (option === 'needs_reassignment') {
+                    setSelectedDriver(null)
+                    setValue('driver_id', undefined)
+                  }
+                }}
+                className={`py-3 rounded-xl font-medium text-[13px] transition-all ${
+                  assignmentType === option
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-white border border-gray-200 text-gray-700'
+                } active:scale-95`}
+              >
+                {option === 'assign_driver' ? 'Assign Driver' : 'Needs Assignment'}
+              </button>
+            ))}
+          </div>
+
+          {assignmentType === 'assign_driver' && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: 'auto' }}
+            >
+              {selectedDriver ? (
+                <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-200 flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <UserCheck className="w-5 h-5 text-green-600" />
+                    <span className="font-medium text-[15px] text-gray-900">
+                      {selectedDriver.name}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedDriver(null)
+                      setValue('driver_id', undefined)
+                    }}
+                    className="p-1 active:scale-95 transition-transform"
+                  >
+                    <X className="w-5 h-5 text-gray-400" />
+                  </button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setShowDriverSearch(true)}
+                  className="w-full bg-white rounded-2xl p-4 shadow-sm border border-gray-200 flex items-center justify-between active:scale-[0.98] transition-transform"
+                >
+                  <span className="text-[15px] text-gray-500">Select a driver</span>
+                  <Search className="w-5 h-5 text-gray-400" />
+                </button>
+              )}
+            </motion.div>
+          )}
+        </div>
 
         {/* Order Items */}
         <div className="px-5 py-4 border-t border-gray-100">
@@ -520,45 +642,6 @@ export default function NewOrderPage() {
           )}
         </div>
 
-        {/* Delivery Options */}
-        <div className="px-5 py-4 border-t border-gray-100">
-          <label className="text-[13px] font-medium text-gray-600 uppercase tracking-wide mb-3 block">
-            Can you deliver this order?
-          </label>
-          
-          <div className="grid grid-cols-3 gap-3">
-            {(['yes', 'maybe', 'no'] as const).map((option) => (
-              <button
-                key={option}
-                type="button"
-                onClick={() => setValue('can_deliver', option)}
-                className={`py-3 rounded-xl font-medium text-[15px] transition-all ${
-                  canDeliver === option
-                    ? 'bg-blue-600 text-white'
-                    : 'bg-white border border-gray-200 text-gray-700'
-                } active:scale-95`}
-              >
-                {option === 'yes' ? 'Yes' : option === 'maybe' ? 'Maybe' : 'No'}
-              </button>
-            ))}
-          </div>
-
-          {canDeliver === 'no' && (
-            <motion.div
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: 'auto' }}
-              className="mt-3"
-            >
-              <textarea
-                placeholder="Reason for reassignment..."
-                {...register('reassignment_reason')}
-                className="w-full bg-white rounded-xl px-4 py-3 border border-gray-200 text-[15px] placeholder-gray-400 outline-none resize-none"
-                rows={3}
-              />
-            </motion.div>
-          )}
-        </div>
-
         {/* Special Instructions */}
         <div className="px-5 py-4 border-t border-gray-100">
           <label className="text-[13px] font-medium text-gray-600 uppercase tracking-wide mb-3 block">
@@ -590,7 +673,7 @@ export default function NewOrderPage() {
         <div className="px-5 py-4 pb-8" style={{ paddingBottom: 'calc(2rem + env(safe-area-inset-bottom))' }}>
           <button
             type="submit"
-            disabled={isSubmitting || selectedItems.length === 0 || !selectedCustomer}
+            disabled={isSubmitting || selectedItems.length === 0 || !selectedCustomer || (assignmentType === 'assign_driver' && !selectedDriver)}
             className="w-full bg-blue-600 text-white py-4 rounded-2xl font-semibold text-[17px] disabled:opacity-50 disabled:cursor-not-allowed active:bg-blue-700 transition-colors"
           >
             {isSubmitting ? 'Creating Order...' : 'Create Order'}
@@ -659,6 +742,68 @@ export default function NewOrderPage() {
                         Outstanding: ${customer.current_balance.toFixed(2)}
                       </p>
                     )}
+                  </button>
+                ))}
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Driver Search Modal */}
+      <AnimatePresence>
+        {showDriverSearch && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/50 z-50"
+            onClick={() => setShowDriverSearch(false)}
+          >
+            <motion.div
+              initial={{ y: '100%' }}
+              animate={{ y: 0 }}
+              exit={{ y: '100%' }}
+              className="absolute bottom-0 left-0 right-0 bg-white rounded-t-3xl"
+              style={{ maxHeight: '85vh', paddingBottom: 'env(safe-area-inset-bottom)' }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="p-5 border-b border-gray-200">
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="text-[17px] font-semibold">Select Driver</h2>
+                  <button
+                    onClick={() => setShowDriverSearch(false)}
+                    className="p-1 active:scale-95 transition-transform"
+                  >
+                    <X className="w-5 h-5 text-gray-400" />
+                  </button>
+                </div>
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                  <input
+                    type="search"
+                    placeholder="Search drivers..."
+                    value={driverSearchQuery}
+                    onChange={(e) => setDriverSearchQuery(e.target.value)}
+                    className="w-full pl-10 pr-4 py-3 bg-gray-100 rounded-xl text-[15px] outline-none"
+                    autoFocus
+                  />
+                </div>
+              </div>
+              
+              <div className="overflow-y-auto" style={{ maxHeight: 'calc(70vh - 120px)' }}>
+                {filteredDrivers.map((driver) => (
+                  <button
+                    key={driver.id}
+                    onClick={() => selectDriver(driver)}
+                    className="w-full px-5 py-4 border-b border-gray-100 text-left active:bg-gray-50 transition-colors"
+                  >
+                    <div className="flex items-center gap-3">
+                      <UserCheck className="w-5 h-5 text-green-600" />
+                      <p className="font-medium text-[15px] text-gray-900">
+                        {driver.name}
+                      </p>
+                    </div>
                   </button>
                 ))}
               </div>

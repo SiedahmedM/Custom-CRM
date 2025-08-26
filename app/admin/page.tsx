@@ -558,70 +558,18 @@ export default function AdminDashboard() {
         </div>
       )}
 
-      {/* PROMINENT PITCH MONITORING SECTION */}
-      <div className="px-5 py-4 border-t border-gray-100 bg-gradient-to-br from-blue-50 to-indigo-50">
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 bg-blue-600 rounded-xl flex items-center justify-center">
-              <Target className="w-4 h-4 text-white" />
-            </div>
-            <div>
-              <h2 className="text-[17px] font-bold text-gray-900">
-                Live Pitch Monitoring
-              </h2>
-              <div className="flex items-center gap-2">
-                <div className={`w-2 h-2 rounded-full ${pitchConnectionStatus ? 'bg-green-500' : 'bg-red-500'} animate-pulse`} />
-                <span className="text-[11px] text-gray-500">
-                  {pitchConnectionStatus ? 'Real-time active' : 'Connection lost'}
-                </span>
-              </div>
-            </div>
-          </div>
-          <button
-            onClick={() => router.push('/admin/pitches')}
-            className="bg-blue-600 text-white px-4 py-2 rounded-xl text-[13px] font-medium active:bg-blue-700 transition-colors"
-          >
-            View All
-          </button>
-        </div>
-
-        {/* Today's Pitch Stats */}
-        <div className="grid grid-cols-3 gap-3 mb-4">
-          <div className="bg-white rounded-2xl p-3 shadow-sm">
-            <div className="text-center">
-              <p className="text-[20px] font-bold text-blue-600">
-                {pitches.filter(p => isToday(new Date(p.pitch_date))).length}
-              </p>
-              <p className="text-[10px] text-gray-500 mt-0.5">Today&apos;s Pitches</p>
-            </div>
-          </div>
-          <div className="bg-white rounded-2xl p-3 shadow-sm">
-            <div className="text-center">
-              <p className="text-[20px] font-bold text-green-600">
-                {pitches.filter(p => isToday(new Date(p.pitch_date)) && p.interest_level === 'high').length}
-              </p>
-              <p className="text-[10px] text-gray-500 mt-0.5">High Interest</p>
-            </div>
-          </div>
-          <div className="bg-white rounded-2xl p-3 shadow-sm">
-            <div className="text-center">
-              <p className="text-[20px] font-bold text-purple-600">
-                {pitchDriverPerformance.reduce((sum, d) => sum + d.total_pitches, 0) > 0 
-                  ? Math.round((pitchDriverPerformance.reduce((sum, d) => sum + d.successful_pitches, 0) / pitchDriverPerformance.reduce((sum, d) => sum + d.total_pitches, 0)) * 100)
-                  : 0}%
-              </p>
-              <p className="text-[10px] text-gray-500 mt-0.5">Success Rate</p>
-            </div>
-          </div>
-        </div>
-
-
-        {/* Real-time Driver Leaderboard */}
-        <div className="bg-white rounded-2xl p-4 shadow-sm">
+      {/* TOTAL PITCHES CARD */}
+      <div className="px-5 py-4 border-t border-gray-100">
+        <div className="bg-gradient-to-br from-purple-50 to-blue-50 rounded-2xl p-4 shadow-sm border border-purple-200">
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2">
-              <Trophy className="w-4 h-4 text-yellow-500" />
-              <h3 className="text-[15px] font-semibold text-gray-900">Pitch Leaderboard</h3>
+              <div className="w-8 h-8 bg-purple-600 rounded-xl flex items-center justify-center">
+                <Target className="w-4 h-4 text-white" />
+              </div>
+              <div>
+                <h3 className="text-[15px] font-semibold text-gray-900">Total Pitches</h3>
+                <p className="text-[11px] text-purple-600">Across all drivers</p>
+              </div>
             </div>
             {/* Time Filter Selector */}
             <div className="flex items-center gap-1">
@@ -631,8 +579,8 @@ export default function AdminDashboard() {
                   onClick={() => setSelectedTimeFrame(timeFrame)}
                   className={`px-2 py-1 rounded-lg text-[10px] font-medium transition-all ${
                     selectedTimeFrame === timeFrame
-                      ? 'bg-blue-600 text-white'
-                      : 'bg-gray-100 text-gray-600 active:bg-gray-200'
+                      ? 'bg-purple-600 text-white'
+                      : 'bg-white/50 text-gray-600 active:bg-white'
                   }`}
                 >
                   {timeFrame === 'today' ? 'Day' : timeFrame === 'week' ? 'Week' : timeFrame === 'month' ? 'Month' : 'Year'}
@@ -640,62 +588,35 @@ export default function AdminDashboard() {
               ))}
             </div>
           </div>
-          <div className="space-y-3">
-            {pitchDriverPerformance.slice(0, 3).map((driver, index) => (
-              <motion.div
-                key={driver.driver_id}
-                initial={{ opacity: 0, scale: 0.95 }}
-                animate={{ opacity: 1, scale: 1 }}
-                transition={{ delay: index * 0.1 }}
-                className={`flex items-center gap-3 p-3 rounded-xl transition-all ${
-                  index === 0 ? 'bg-yellow-50 border border-yellow-200' :
-                  index === 1 ? 'bg-gray-50 border border-gray-200' :
-                  'bg-orange-50 border border-orange-200'
-                }`}
-              >
-                <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-[13px] ${
-                  index === 0 ? 'bg-yellow-500 text-white' :
-                  index === 1 ? 'bg-gray-500 text-white' :
-                  'bg-orange-500 text-white'
-                }`}>
-                  {index + 1}
-                </div>
-                <div className="flex-1">
-                  <p className="font-medium text-[14px] text-gray-900">
-                    {driver.driver_name}
-                  </p>
-                  <div className="flex items-center gap-4 mt-1">
-                    <span className="text-[11px] text-gray-600">
-                      {driver.total_pitches} pitches
-                    </span>
-                    <span className="text-[11px] text-green-600 font-medium">
-                      {driver.success_rate.toFixed(0)}% success
-                    </span>
-                    <span className="text-[11px] text-blue-600">
-                      ${driver.potential_value.toFixed(0)} potential
-                    </span>
-                  </div>
-                </div>
-                <div className="text-right">
-                  <div className={`text-[16px] font-bold ${
-                    index === 0 ? 'text-yellow-600' :
-                    index === 1 ? 'text-gray-600' :
-                    'text-orange-600'
-                  }`}>
-                    {driver.verification_issues === 0 ? '✓' : '⚠️'}
-                  </div>
-                  <p className="text-[10px] text-gray-500">
-                    {format(new Date(driver.last_activity), 'h:mm a')}
-                  </p>
-                </div>
-              </motion.div>
-            ))}
-            {pitchDriverPerformance.length === 0 && (
-              <div className="text-center py-4">
-                <TrendingUp className="w-8 h-8 text-gray-300 mx-auto mb-2" />
-                <p className="text-[13px] text-gray-500">No driver activity yet</p>
-              </div>
-            )}
+          
+          <div className="grid grid-cols-2 gap-4">
+            <div className="text-center">
+              <p className="text-[32px] font-bold text-purple-600">
+                {pitches.length}
+              </p>
+              <p className="text-[12px] text-gray-600 mt-1">
+                Total Pitches {selectedTimeFrame === 'today' ? 'Today' : `This ${selectedTimeFrame.charAt(0).toUpperCase() + selectedTimeFrame.slice(1)}`}
+              </p>
+            </div>
+            <div className="text-center">
+              <p className="text-[32px] font-bold text-green-600">
+                {pitches.filter(p => p.interest_level === 'high').length}
+              </p>
+              <p className="text-[12px] text-gray-600 mt-1">
+                High Interest
+              </p>
+            </div>
+          </div>
+          
+          <div className="mt-3 pt-3 border-t border-purple-100">
+            <div className="flex items-center justify-between text-[11px] text-gray-600">
+              <span>Success Rate</span>
+              <span className="font-medium text-green-600">
+                {pitches.length > 0 
+                  ? Math.round((pitches.filter(p => p.interest_level === 'high').length / pitches.length) * 100)
+                  : 0}%
+              </span>
+            </div>
           </div>
         </div>
       </div>
@@ -795,6 +716,12 @@ export default function AdminDashboard() {
             Recent Orders (24 hours)
           </h2>
           <div className="flex items-center gap-2">
+            <button
+              onClick={() => router.push('/admin/new-order')}
+              className="bg-blue-600 text-white px-3 py-1.5 rounded-lg text-[12px] font-medium active:bg-blue-700 transition-colors"
+            >
+              + Add Order
+            </button>
             {recentOrders.length > 0 && (
               <button
                 onClick={() => setDismissedOrders(new Set(recentOrders.map(o => o.id)))}

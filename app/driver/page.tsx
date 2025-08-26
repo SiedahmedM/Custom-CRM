@@ -19,16 +19,27 @@ import {
   ChevronRight,
   Navigation,
   Target,
-  Star
+  Star,
+  RefreshCw,
+  MoreVertical,
+  Trash2,
+  UserX,
+  CheckCircle
 } from 'lucide-react'
 import { useRealtimeOrders } from '@/hooks/useRealtimeOrders'
 import { useRealtimePitches } from '@/hooks/useRealtimePitches'
-import { format } from 'date-fns'
+import { format, startOfToday, subWeeks, subMonths } from 'date-fns'
 import { motion, AnimatePresence } from 'framer-motion'
+import { toast } from 'react-hot-toast'
+import { createClient } from '@/lib/supabase/client'
 export default function DriverDashboard() {
   const { user, isDriver } = useAuth()
   const router = useRouter()
   const [activeTab, setActiveTab] = useState('home')
+  const [refreshing, setRefreshing] = useState(false)
+  const [showOrderActions, setShowOrderActions] = useState<string | null>(null)
+  const [ordersTimeFilter, setOrdersTimeFilter] = useState<'day' | 'week' | 'month'>('month')
+  const supabase = createClient()
 
   // Protect route
   useEffect(() => {
@@ -38,9 +49,73 @@ export default function DriverDashboard() {
   }, [user, isDriver, router])
 
   // Get pitch data
-  const { pitches } = useRealtimePitches({
+  const { pitches, refetch: refetchPitches } = useRealtimePitches({
     driver_id: user?.id
   })
+
+  const handleRefresh = async () => {
+    setRefreshing(true)
+    // Haptic feedback
+    if (window.navigator.vibrate) {
+      window.navigator.vibrate(10)
+    }
+    
+    try {
+      await Promise.all([
+        refetchOrders(),
+        refetchDriverOrders(),
+        refetchPitches()
+      ])
+      
+      // Show success toast
+      toast.success('Dashboard refreshed')
+      if (window.navigator.vibrate) {
+        window.navigator.vibrate(50)
+      }
+    } catch (error) {
+      console.error('Error refreshing data:', error)
+    } finally {
+      setRefreshing(false)
+    }
+  }
+
+  const handleClearOrder = async (orderId: string) => {
+    try {
+      const { error } = await supabase
+        .from('orders')
+        .delete()
+        .eq('id', orderId)
+      
+      if (error) throw error
+      
+      toast.success('Order cleared successfully')
+      setShowOrderActions(null)
+      refetchOrders()
+    } catch (error) {
+      console.error('Error clearing order:', error)
+      toast.error('Failed to clear order')
+    }
+  }
+
+  const handleReassignOrder = async (orderId: string) => {
+    try {
+      await updateOrderStatus.mutateAsync({
+        id: orderId,
+        status: 'needs_reassignment'
+      })
+      
+      toast.success('Order marked for reassignment')
+      setShowOrderActions(null)
+    } catch (error) {
+      console.error('Error reassigning order:', error)
+      toast.error('Failed to reassign order')
+    }
+  }
+
+  const handleCompleteOrder = (orderId: string) => {
+    router.push(`/driver/delivery/${orderId}`)
+    setShowOrderActions(null)
+  }
 
   // Add iOS viewport adjustments
   useEffect(() => {
@@ -62,15 +137,57 @@ export default function DriverDashboard() {
     }
   }, [])
 
+  // Close order actions menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = () => {
+      if (showOrderActions) {
+        setShowOrderActions(null)
+      }
+    }
+    
+    document.addEventListener('click', handleClickOutside)
+    return () => document.removeEventListener('click', handleClickOutside)
+  }, [showOrderActions])
+
   // Get driver's orders with real-time updates (both assigned to them and created by them)
   const { 
     orders: allOrders, 
-    updateOrderStatus 
+    updateOrderStatus,
+    refetch: refetchOrders
   } = useRealtimeOrders({
     date_range: {
       start: new Date(new Date().setHours(0, 0, 0, 0)),
       end: new Date(new Date().setHours(23, 59, 59, 999))
     }
+  })
+
+  // Get driver's past orders for the orders tab
+  const { 
+    orders: driverAllOrders,
+    refetch: refetchDriverOrders
+  } = useRealtimeOrders({
+    driver_id: user?.id,
+    date_range: (() => {
+      const now = new Date()
+      switch (ordersTimeFilter) {
+        case 'day':
+          return {
+            start: startOfToday(),
+            end: now
+          }
+        case 'week':
+          return {
+            start: subWeeks(now, 1),
+            end: now
+          }
+        case 'month':
+        default:
+          return {
+            start: subMonths(now, 1),
+            end: now
+          }
+      }
+    })()
   })
 
   // Filter to show orders relevant to this driver
@@ -161,13 +278,22 @@ export default function DriverDashboard() {
                 {format(new Date(), 'EEEE, MMMM d')}
               </p>
             </div>
-            <button
-              onClick={() => router.push('/driver/notifications')}
-              className="relative p-2 -mr-2 active:scale-95 transition-transform"
-            >
-              <Bell className="w-[22px] h-[22px] text-gray-600" />
-              <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full animate-pulse" />
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleRefresh}
+                disabled={refreshing}
+                className="p-2 active:scale-95 transition-transform"
+              >
+                <RefreshCw className={`w-[20px] h-[20px] text-gray-600 ${refreshing ? 'animate-spin' : ''}`} />
+              </button>
+              <button
+                onClick={() => router.push('/driver/notifications')}
+                className="relative p-2 -mr-2 active:scale-95 transition-transform"
+              >
+                <Bell className="w-[22px] h-[22px] text-gray-600" />
+                <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full animate-pulse" />
+              </button>
+            </div>
           </div>
         </div>
       </header>
@@ -381,10 +507,10 @@ export default function DriverDashboard() {
               {inProgressOrders.map((order) => (
                 <motion.div
                   key={order.id}
-                  className="bg-green-50 border border-green-200 rounded-2xl p-4 active:scale-[0.98] transition-transform"
+                  className="bg-green-50 border border-green-200 rounded-2xl p-4"
                 >
                   <div className="flex items-center justify-between">
-                    <div>
+                    <div className="flex-1">
                       <p className="font-semibold text-[17px] text-gray-900">
                         {order.customer.shop_name}
                       </p>
@@ -392,12 +518,44 @@ export default function DriverDashboard() {
                         Started: {format(new Date(order.delivery_started_at!), 'h:mm a')}
                       </p>
                     </div>
-                    <button
-                      onClick={() => router.push(`/driver/delivery/${order.id}`)}
-                      className="bg-green-600 text-white px-4 py-2 rounded-xl text-[15px] font-medium active:bg-green-700 transition-colors"
-                    >
-                      Complete
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => handleCompleteOrder(order.id)}
+                        className="bg-green-600 text-white px-3 py-2 rounded-xl text-[13px] font-medium active:bg-green-700 transition-colors"
+                      >
+                        Complete
+                      </button>
+                      <div className="relative">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            setShowOrderActions(showOrderActions === order.id ? null : order.id)
+                          }}
+                          className="p-2 text-gray-500 active:bg-green-100 rounded-lg transition-colors"
+                        >
+                          <MoreVertical className="w-4 h-4" />
+                        </button>
+                        
+                        {showOrderActions === order.id && (
+                          <div className="absolute right-0 top-10 bg-white rounded-xl shadow-lg border border-gray-200 min-w-[160px] z-50">
+                            <button
+                              onClick={() => handleReassignOrder(order.id)}
+                              className="w-full flex items-center gap-3 px-4 py-3 text-left text-[14px] text-gray-700 active:bg-gray-50 rounded-t-xl transition-colors"
+                            >
+                              <UserX className="w-4 h-4 text-orange-500" />
+                              Reassign Order
+                            </button>
+                            <button
+                              onClick={() => handleClearOrder(order.id)}
+                              className="w-full flex items-center gap-3 px-4 py-3 text-left text-[14px] text-red-600 active:bg-red-50 rounded-b-xl transition-colors"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                              Clear Order
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
                   </div>
                 </motion.div>
               ))}
@@ -438,7 +596,29 @@ export default function DriverDashboard() {
       {/* Orders Tab */}
       {activeTab === 'orders' && (
         <div className="px-5 py-4">
-          <h2 className="text-[20px] font-semibold text-gray-900 mb-4">My Orders</h2>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-[20px] font-semibold text-gray-900">My Orders</h2>
+            <div className="flex items-center gap-1">
+              {(['day', 'week', 'month'] as const).map((timeFrame) => (
+                <button
+                  key={timeFrame}
+                  onClick={() => setOrdersTimeFilter(timeFrame)}
+                  className={`px-3 py-1.5 rounded-lg text-[12px] font-medium transition-all ${
+                    ordersTimeFilter === timeFrame
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-gray-100 text-gray-600 active:bg-gray-200'
+                  }`}
+                >
+                  {timeFrame === 'day' ? 'Today' : timeFrame === 'week' ? 'Week' : 'Month'}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Orders count */}
+          <p className="text-[13px] text-gray-500 mb-4">
+            {driverAllOrders.length} orders in the past {ordersTimeFilter}
+          </p>
           
           {pendingOrders.length > 0 && (
             <div className="mb-6">
