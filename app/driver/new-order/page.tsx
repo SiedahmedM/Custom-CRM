@@ -213,6 +213,15 @@ export default function NewOrderPage() {
     setValue('items', updatedItems.map(({ inventory_id, quantity, unit_price }) => ({ inventory_id, quantity, unit_price })))
   }
 
+  const updateItemPrice = (index: number, newPrice: number) => {
+    if (newPrice <= 0) return
+    
+    const updatedItems = [...selectedItems]
+    updatedItems[index].unit_price = newPrice
+    setSelectedItems(updatedItems)
+    setValue('items', updatedItems.map(({ inventory_id, quantity, unit_price }) => ({ inventory_id, quantity, unit_price })))
+  }
+
   const calculateTotal = () => {
     return selectedItems.reduce((sum, item) => 
       sum + (item.quantity * item.unit_price), 0
@@ -477,7 +486,7 @@ export default function NewOrderPage() {
                         {item.part.description}
                       </p>
                       <p className="text-[13px] text-gray-500 mt-1">
-                        ${item.unit_price.toFixed(2)} each • {item.part.current_quantity} available
+                        List: ${item.part.selling_price.toFixed(2)} • {item.part.current_quantity} available
                       </p>
                     </div>
                     <button
@@ -489,6 +498,30 @@ export default function NewOrderPage() {
                     </button>
                   </div>
                   
+                  {/* Price Input */}
+                  <div className="mb-3">
+                    <label className="text-[12px] font-medium text-gray-600 uppercase tracking-wide mb-2 block">
+                      Unit Price
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[15px] text-gray-500">$</span>
+                      <input
+                        type="number"
+                        step="0.01"
+                        min="0.01"
+                        value={item.unit_price}
+                        onChange={(e) => {
+                          const newPrice = parseFloat(e.target.value) || 0
+                          if (newPrice > 0) {
+                            updateItemPrice(index, newPrice)
+                          }
+                        }}
+                        className="flex-1 text-[15px] font-medium bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 outline-none focus:border-blue-500 focus:bg-white transition-colors"
+                        placeholder="0.00"
+                      />
+                    </div>
+                  </div>
+
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
                       <button
