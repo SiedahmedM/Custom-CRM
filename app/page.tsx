@@ -79,15 +79,6 @@ export default function LoginPage() {
             </button>
           </form>
 
-          <div className="mt-8 pt-6 border-t border-white/20">
-            <div className="text-center text-gray-400 text-sm">
-              <p>Demo Access Keys:</p>
-              <div className="mt-2 space-y-1 font-mono text-xs">
-                <p>Admin: Adam1234</p>
-                <p>Drivers: Jose5543, Ramy7821, Ryan9456</p>
-              </div>
-            </div>
-          </div>
         </div>
       </div>
     </div>

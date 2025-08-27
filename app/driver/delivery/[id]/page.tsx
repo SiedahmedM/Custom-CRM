@@ -271,10 +271,8 @@ export default function DeliveryCompletionPage({ params }: { params: { id: strin
         window.navigator.vibrate([100, 50, 100])
       }
 
-      // Navigate to pitches page after delivery completion
-      setTimeout(() => {
-        router.push('/driver/pitches?from=delivery')
-      }, 2000)
+      // Stay on the current page after delivery completion
+      // Driver can manually navigate to suggested shops from dashboard if needed
 
     } catch (error) {
       console.error('Failed to complete delivery:', error)
