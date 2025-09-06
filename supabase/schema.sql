@@ -251,30 +251,30 @@ CREATE OR REPLACE FUNCTION update_inventory_on_order()
 RETURNS TRIGGER AS $$
 BEGIN
     IF NEW.status = 'delivered' AND (OLD.status IS NULL OR OLD.status != 'delivered') THEN
-        -- Decrease inventory for delivered orders
+        -- Decrease inventory for delivered orders (negative quantities increase stock for returns)
         UPDATE inventory i
         SET current_quantity = current_quantity - oi.quantity
         FROM order_items oi
         WHERE i.id = oi.inventory_id
         AND oi.order_id = NEW.id;
         
-        -- Update reserved quantity
+        -- Update reserved quantity (only release positive reserved amounts)
         UPDATE inventory i
-        SET reserved_quantity = reserved_quantity - oi.quantity
+        SET reserved_quantity = reserved_quantity - GREATEST(oi.quantity, 0)
         FROM order_items oi
         WHERE i.id = oi.inventory_id
         AND oi.order_id = NEW.id;
     ELSIF NEW.status IN ('assigned', 'out_for_delivery') AND (OLD.status IS NULL OR OLD.status = 'pending') THEN
-        -- Reserve inventory when order is assigned
+        -- Reserve inventory when order is assigned (do not reserve for returns)
         UPDATE inventory i
-        SET reserved_quantity = reserved_quantity + oi.quantity
+        SET reserved_quantity = reserved_quantity + GREATEST(oi.quantity, 0)
         FROM order_items oi
         WHERE i.id = oi.inventory_id
         AND oi.order_id = NEW.id;
     ELSIF NEW.status = 'cancelled' AND OLD.status IN ('assigned', 'out_for_delivery') THEN
-        -- Release reserved inventory on cancellation
+        -- Release reserved inventory on cancellation (only for positive reserved amounts)
         UPDATE inventory i
-        SET reserved_quantity = reserved_quantity - oi.quantity
+        SET reserved_quantity = reserved_quantity - GREATEST(oi.quantity, 0)
         FROM order_items oi
         WHERE i.id = oi.inventory_id
         AND oi.order_id = NEW.id;

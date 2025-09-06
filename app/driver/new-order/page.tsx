@@ -21,7 +21,8 @@ const orderSchema = z.object({
   reassignment_reason: z.string().optional(),
   items: z.array(z.object({
     inventory_id: z.string(),
-    quantity: z.number().min(1),
+    // Allow negative for returns, but not zero
+    quantity: z.number().refine(v => v !== 0, { message: 'Quantity cannot be zero' }),
     unit_price: z.number()
   })).min(1, 'Please add at least one item')
 })
@@ -38,7 +39,9 @@ export default function NewOrderPage() {
   const [searchQuery, setSearchQuery] = useState('')
   const [partSearchQuery, setPartSearchQuery] = useState('')
   const [selectedCustomer, setSelectedCustomer] = useState<{id: string; shop_name: string; contact_name: string; address?: string; phone?: string; current_balance: number} | null>(null)
-  const [selectedItems, setSelectedItems] = useState<{ inventory_id: string; part: { id: string; part_number: string; description: string; selling_price: number; current_quantity: number }; quantity: number; unit_price: number }[]>([])
+  const [selectedItems, setSelectedItems] = useState<{ inventory_id: string; part: { id: string; part_number: string; description: string; selling_price: number; current_quantity: number }; quantity: number; unit_price: number; is_return?: boolean }[]>([])
+  // Maintain string input state for unit prices to allow clearing while typing
+  const [priceInputs, setPriceInputs] = useState<Record<string, string>>({})
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [showCustomerSearch, setShowCustomerSearch] = useState(false)
   const [showPartSearch, setShowPartSearch] = useState(false)
@@ -75,7 +78,7 @@ export default function NewOrderPage() {
       .from('inventory')
       .select('*')
       .eq('is_active', true)
-      .gt('current_quantity', 0)
+      // include all parts so returns/trades can be selected even when out of stock
       .order('part_number')
 
     if (data) setInventory(data)
@@ -142,7 +145,12 @@ export default function NewOrderPage() {
   // Check for duplicate orders when customer or items change
   useEffect(() => {
     if (selectedCustomer && selectedItems.length > 0) {
-      checkDuplicateOrder(selectedCustomer.id, selectedItems)
+      // Include return sign in quantity for duplicate detection
+      const itemsForCheck = selectedItems.map(it => ({
+        inventory_id: it.inventory_id,
+        quantity: it.is_return ? -Math.abs(it.quantity) : it.quantity
+      }))
+      checkDuplicateOrder(selectedCustomer.id, itemsForCheck)
     } else {
       setDuplicateOrderCheck(null)
     }
@@ -167,8 +175,8 @@ export default function NewOrderPage() {
 
   const addItem = (part: {id: string; part_number: string; description: string; selling_price: number; current_quantity: number}) => {
     const existingItem = selectedItems.find(i => i.inventory_id === part.id)
-    
-    if (existingItem) {
+    // Allow adding the same part again only if the existing one is marked as return (trade)
+    if (existingItem && !existingItem.is_return) {
       toast.error('This part is already added')
       return
     }
@@ -177,12 +185,14 @@ export default function NewOrderPage() {
       inventory_id: part.id,
       part: part,
       quantity: 1,
-      unit_price: part.selling_price
+      unit_price: part.selling_price,
+      is_return: false
     }
 
     const updatedItems = [...selectedItems, newItem]
     setSelectedItems(updatedItems)
-    setValue('items', updatedItems.map(({ inventory_id, quantity, unit_price }) => ({ inventory_id, quantity, unit_price })))
+    setPriceInputs(prev => ({ ...prev, [part.id]: part.selling_price.toFixed(2) }))
+    setValue('items', updatedItems.map(({ inventory_id, quantity, unit_price, is_return }) => ({ inventory_id, quantity: (is_return ? -Math.abs(quantity) : quantity), unit_price })))
     setShowPartSearch(false)
     setPartSearchQuery('')
     
@@ -196,7 +206,8 @@ export default function NewOrderPage() {
     if (quantity < 1) return
     
     const item = selectedItems[index]
-    if (quantity > item.part.current_quantity) {
+    // Only enforce available stock when delivering, not when returning/trading in
+    if (!item.is_return && quantity > item.part.current_quantity) {
       toast.error(`Only ${item.part.current_quantity} available`)
       return
     }
@@ -204,13 +215,19 @@ export default function NewOrderPage() {
     const updatedItems = [...selectedItems]
     updatedItems[index].quantity = quantity
     setSelectedItems(updatedItems)
-    setValue('items', updatedItems.map(({ inventory_id, quantity, unit_price }) => ({ inventory_id, quantity, unit_price })))
+    setValue('items', updatedItems.map(({ inventory_id, quantity, unit_price, is_return }) => ({ inventory_id, quantity: (is_return ? -Math.abs(quantity) : quantity), unit_price })))
   }
 
   const removeItem = (index: number) => {
+    const removed = selectedItems[index]
     const updatedItems = selectedItems.filter((_, i) => i !== index)
     setSelectedItems(updatedItems)
-    setValue('items', updatedItems.map(({ inventory_id, quantity, unit_price }) => ({ inventory_id, quantity, unit_price })))
+    setPriceInputs(prev => {
+      const next = { ...prev }
+      delete next[removed.inventory_id]
+      return next
+    })
+    setValue('items', updatedItems.map(({ inventory_id, quantity, unit_price, is_return }) => ({ inventory_id, quantity: (is_return ? -Math.abs(quantity) : quantity), unit_price })))
   }
 
   const updateItemPrice = (index: number, newPrice: number) => {
@@ -219,13 +236,14 @@ export default function NewOrderPage() {
     const updatedItems = [...selectedItems]
     updatedItems[index].unit_price = newPrice
     setSelectedItems(updatedItems)
-    setValue('items', updatedItems.map(({ inventory_id, quantity, unit_price }) => ({ inventory_id, quantity, unit_price })))
+    setValue('items', updatedItems.map(({ inventory_id, quantity, unit_price, is_return }) => ({ inventory_id, quantity: (is_return ? -Math.abs(quantity) : quantity), unit_price })))
   }
 
   const calculateTotal = () => {
-    return selectedItems.reduce((sum, item) => 
-      sum + (item.quantity * item.unit_price), 0
-    )
+    return selectedItems.reduce((sum, item) => {
+      const sign = item.is_return ? -1 : 1
+      return sum + (sign * item.quantity * item.unit_price)
+    }, 0)
   }
 
   const onSubmit = async (data: OrderFormData) => {
@@ -506,20 +524,45 @@ export default function NewOrderPage() {
                     <div className="flex items-center gap-2">
                       <span className="text-[15px] text-gray-500">$</span>
                       <input
-                        type="number"
-                        step="0.01"
-                        min="0.01"
-                        value={item.unit_price}
+                        type="text"
+                        inputMode="decimal"
+                        value={priceInputs[item.inventory_id] ?? item.unit_price.toFixed(2)}
                         onChange={(e) => {
-                          const newPrice = parseFloat(e.target.value) || 0
-                          if (newPrice > 0) {
-                            updateItemPrice(index, newPrice)
+                          const val = e.target.value
+                          setPriceInputs(prev => ({ ...prev, [item.inventory_id]: val }))
+                        }}
+                        onBlur={() => {
+                          const raw = priceInputs[item.inventory_id]
+                          const parsed = raw !== undefined ? parseFloat(raw) : item.unit_price
+                          if (!isNaN(parsed) && parsed > 0) {
+                            updateItemPrice(index, parseFloat(parsed.toFixed(2)))
+                            setPriceInputs(prev => ({ ...prev, [item.inventory_id]: parsed.toFixed(2) }))
+                          } else {
+                            // Revert to current unit price if invalid/empty
+                            setPriceInputs(prev => ({ ...prev, [item.inventory_id]: item.unit_price.toFixed(2) }))
                           }
                         }}
                         className="flex-1 text-[15px] font-medium bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 outline-none focus:border-blue-500 focus:bg-white transition-colors"
                         placeholder="0.00"
                       />
                     </div>
+                  </div>
+
+                  {/* Return / Trade Toggle */}
+                  <div className="mb-3">
+                    <label className="inline-flex items-center gap-2 text-[13px] text-gray-700">
+                      <input
+                        type="checkbox"
+                        checked={!!item.is_return}
+                        onChange={(e) => {
+                          const updatedItems = [...selectedItems]
+                          updatedItems[index].is_return = e.target.checked
+                          setSelectedItems(updatedItems)
+                          setValue('items', updatedItems.map(({ inventory_id, quantity, unit_price, is_return }) => ({ inventory_id, quantity: (is_return ? -Math.abs(quantity) : quantity), unit_price })))
+                        }}
+                      />
+                      Mark as Return (trade)
+                    </label>
                   </div>
 
                   <div className="flex items-center justify-between">
@@ -542,8 +585,8 @@ export default function NewOrderPage() {
                         +
                       </button>
                     </div>
-                    <p className="font-semibold text-[15px] text-gray-900">
-                      ${(item.quantity * item.unit_price).toFixed(2)}
+                    <p className={`font-semibold text-[15px] ${item.is_return ? 'text-red-600' : 'text-gray-900'}`}>
+                      {(item.is_return ? '-' : '')}${(item.quantity * item.unit_price).toFixed(2)}
                     </p>
                   </div>
                 </motion.div>

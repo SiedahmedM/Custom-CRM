@@ -40,6 +40,16 @@ export default function InventoryPage() {
     current_quantity: number
     reorder_threshold: number | null
   } | null>(null)
+  const [showEditPriceModal, setShowEditPriceModal] = useState(false)
+  const [priceItem, setPriceItem] = useState<{
+    id: string
+    part_number: string
+    description: string
+    cost_per_unit: number
+    selling_price: number
+  } | null>(null)
+  const [editCost, setEditCost] = useState('')
+  const [editPrice, setEditPrice] = useState('')
   const [adjustmentType, setAdjustmentType] = useState<'add' | 'remove'>('add')
   const [adjustmentQuantity, setAdjustmentQuantity] = useState('')
   const [adjustmentReason, setAdjustmentReason] = useState('')
@@ -86,6 +96,7 @@ export default function InventoryPage() {
     totalInventoryValue,
     adjustInventoryStock,
     addInventoryItem,
+    updateInventoryItem,
     refetch 
   } = useRealtimeInventory({
     search_query: searchQuery,
@@ -186,6 +197,37 @@ export default function InventoryPage() {
     setAdjustmentType('add')
     setAdjustmentQuantity('')
     setAdjustmentReason('')
+  }
+
+  const openEditPriceModal = (item: {
+    id: string
+    part_number: string
+    description: string
+    cost_per_unit: number
+    selling_price: number
+  }) => {
+    setPriceItem(item)
+    setEditCost(item.cost_per_unit.toFixed(2))
+    setEditPrice(item.selling_price.toFixed(2))
+    setShowEditPriceModal(true)
+  }
+
+  const handleSavePrices = async () => {
+    if (!priceItem) return
+    const cost = parseFloat(editCost)
+    const price = parseFloat(editPrice)
+    if (isNaN(cost) || isNaN(price) || cost < 0 || price <= 0) {
+      toast.error('Enter valid cost and price')
+      return
+    }
+    try {
+      await updateInventoryItem.mutateAsync({ id: priceItem.id, updates: { cost_per_unit: cost, selling_price: price } })
+      setShowEditPriceModal(false)
+      setPriceItem(null)
+    } catch (error) {
+      console.error('Failed to update prices:', error)
+      toast.error('Failed to update prices')
+    }
   }
 
 
@@ -447,15 +489,30 @@ export default function InventoryPage() {
                         </div>
                       )}
 
-                      {/* Adjust Stock Button */}
+                      {/* Actions */}
                       <div className="mt-4 pt-3 border-t border-gray-100">
-                        <button
-                          onClick={() => openAdjustModal(item)}
-                          className="w-full bg-blue-50 text-blue-600 p-2 rounded-xl font-medium text-[13px] active:bg-blue-100 transition-colors flex items-center justify-center gap-2"
-                        >
-                          <Edit3 className="w-4 h-4" />
-                          Adjust Stock
-                        </button>
+                        <div className="grid grid-cols-2 gap-2">
+                          <button
+                            onClick={() => openAdjustModal(item)}
+                            className="w-full bg-blue-50 text-blue-600 p-2 rounded-xl font-medium text-[13px] active:bg-blue-100 transition-colors flex items-center justify-center gap-2"
+                          >
+                            <Edit3 className="w-4 h-4" />
+                            Adjust Stock
+                          </button>
+                          <button
+                            onClick={() => openEditPriceModal({
+                              id: item.id,
+                              part_number: item.part_number,
+                              description: item.description,
+                              cost_per_unit: item.cost_per_unit,
+                              selling_price: item.selling_price,
+                            })}
+                            className="w-full bg-gray-50 text-gray-700 p-2 rounded-xl font-medium text-[13px] active:bg-gray-100 transition-colors flex items-center justify-center gap-2"
+                          >
+                            <Edit3 className="w-4 h-4" />
+                            Edit Prices
+                          </button>
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -748,6 +805,88 @@ export default function InventoryPage() {
                     <Check className="w-4 h-4" />
                   )}
                   Adjust Stock
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Edit Prices Modal */}
+      <AnimatePresence>
+        {showEditPriceModal && priceItem && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/50 flex items-end justify-center z-50"
+            onClick={() => setShowEditPriceModal(false)}
+          >
+            <motion.div
+              initial={{ y: '100%' }}
+              animate={{ y: 0 }}
+              exit={{ y: '100%' }}
+              className="bg-white rounded-t-3xl p-6 w-full max-h-[70vh] overflow-y-auto"
+              onClick={(e) => e.stopPropagation()}
+              style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
+            >
+              <div className="flex items-center justify-between mb-6">
+                <h2 className="text-[20px] font-bold text-gray-900">Edit Prices</h2>
+                <button
+                  onClick={() => setShowEditPriceModal(false)}
+                  className="p-2 active:scale-95 transition-transform"
+                >
+                  <X className="w-6 h-6 text-gray-400" />
+                </button>
+              </div>
+
+              <div className="bg-gray-50 rounded-2xl p-4 mb-6">
+                <p className="font-semibold text-[15px] text-gray-900 mb-1">
+                  {priceItem.part_number}
+                </p>
+                <p className="text-[13px] text-gray-600">
+                  {priceItem.description}
+                </p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-[13px] font-medium text-gray-700 mb-2">Cost Per Unit</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={editCost}
+                    onChange={(e) => setEditCost(e.target.value)}
+                    className="w-full px-4 py-3 border border-gray-200 rounded-xl text-[15px] outline-none focus:border-blue-500"
+                    placeholder="0.00"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[13px] font-medium text-gray-700 mb-2">Selling Price</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={editPrice}
+                    onChange={(e) => setEditPrice(e.target.value)}
+                    className="w-full px-4 py-3 border border-gray-200 rounded-xl text-[15px] outline-none focus:border-blue-500"
+                    placeholder="0.00"
+                  />
+                </div>
+              </div>
+
+              <div className="flex gap-3 mt-8">
+                <button
+                  onClick={() => setShowEditPriceModal(false)}
+                  className="flex-1 bg-gray-100 text-gray-700 py-3 rounded-xl font-medium text-[15px] active:bg-gray-200 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleSavePrices}
+                  className="flex-1 bg-blue-600 text-white py-3 rounded-2xl font-medium text-[15px] active:bg-blue-700 transition-colors flex items-center justify-center gap-2"
+                >
+                  <Check className="w-4 h-4" />
+                  Save Prices
                 </button>
               </div>
             </motion.div>
