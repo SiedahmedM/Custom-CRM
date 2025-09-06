@@ -48,8 +48,8 @@ export function ConnectionStatus() {
 
   return (
     <>
-      {/* Dark mode toggle - always visible */}
-      <div className="fixed top-4 left-4 z-50">
+      {/* Dark mode toggle - moved to bottom-right to avoid covering headers */}
+      <div className="fixed bottom-4 right-4 z-50">
         <DarkModeToggle />
       </div>
 
